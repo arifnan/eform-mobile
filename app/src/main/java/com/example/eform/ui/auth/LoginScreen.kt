@@ -1,163 +1,100 @@
-//package com.example.eform.ui.auth
-//
-//import androidx.compose.foundation.Image
-//import androidx.compose.foundation.layout.*
-//import androidx.compose.material3.*
-//import androidx.compose.runtime.*
-//import androidx.compose.ui.*
-//import androidx.compose.ui.Modifier
-//import androidx.compose.ui.platform.LocalContext
-//import androidx.compose.ui.res.painterResource
-//import androidx.compose.ui.text.input.*
-//import androidx.compose.ui.unit.dp
-//import androidx.navigation.NavController
-//import com.example.eform.R
-//import com.example.eform.data.api.RetrofitInstance
-//import com.example.eform.data.local.UserPreferences
-//import com.example.eform.data.model.LoginRequest
-//import com.example.eform.navigation.Screen
-//import kotlinx.coroutines.launch
-//
-//@Composable
-//fun LoginScreen(navController: NavController) {
-//    val coroutineScope = rememberCoroutineScope()
-//
-//    var email by remember { mutableStateOf("") }
-//    var password by remember { mutableStateOf("") }
-//    var isLoading by remember { mutableStateOf(false) }
-//    var errorMessage by remember { mutableStateOf<String?>(null) }
-//    val context = LocalContext.current
-//    val userPrefs = remember { UserPreferences(context) }
-//
-//    Column(
-//        modifier = Modifier
-//            .fillMaxSize()
-//            .padding(32.dp),
-//        verticalArrangement = Arrangement.Center
-//    ) {
-//        Text("Login", style = MaterialTheme.typography.headlineMedium)
-//        Spacer(modifier = Modifier.height(16.dp))
-//
-//        Image(
-//            painter = painterResource(id = R.drawable.login_illustration),
-//            contentDescription = null,
-//            modifier = Modifier
-//                .fillMaxWidth()
-//                .height(200.dp)
-//        )
-//
-//        OutlinedTextField(
-//            value = email,
-//            onValueChange = { email = it },
-//            label = { Text("Email") },
-//            singleLine = true,
-//            modifier = Modifier.fillMaxWidth()
-//        )
-//
-//        Spacer(modifier = Modifier.height(16.dp))
-//
-//        OutlinedTextField(
-//            value = password,
-//            onValueChange = { password = it },
-//            label = { Text("Password") },
-//            singleLine = true,
-//            visualTransformation = PasswordVisualTransformation(),
-//            modifier = Modifier.fillMaxWidth()
-//        )
-//
-//        Spacer(modifier = Modifier.height(24.dp))
-//
-//        Button(
-//            onClick = {
-//                coroutineScope.launch {
-//                    isLoading = true
-//                    try {
-//                        val response = RetrofitInstance.api.login(LoginRequest(email, password))
-//                        if (response.isSuccessful && response.body()?.status == true) {
-//                            // Lanjut ke dashboard atau simpan token
-//                            response.body()?.token?.let { token ->
-//                                userPrefs.saveToken(token)
-//                            }
-//                            navController.navigate(Screen.Dashboard.route) {
-//                                popUpTo(Screen.Login.route) { inclusive = true }
-//                            }
-//                        } else {
-//                            errorMessage = response.body()?.message ?: "Login gagal"
-//                        }
-//                    } catch (e: Exception) {
-//                        errorMessage = "Gagal koneksi ke server"
-//                    }
-//                    isLoading = false
-//                }
-//            },
-//            enabled = !isLoading,
-//            modifier = Modifier.fillMaxWidth()
-//        ) {
-//            Text(if (isLoading) "Loading..." else "Login")
-//        }
-//
-//        Spacer(modifier = Modifier.height(12.dp))
-//
-//        errorMessage?.let {
-//            Text(text = it, color = MaterialTheme.colorScheme.error)
-//        }
-//
-//        Spacer(modifier = Modifier.height(12.dp))
-//
-//        TextButton(onClick = {
-//            navController.navigate(Screen.Register.route)
-//        }) {
-//            Text("Belum punya akun? Daftar")
-//        }
-//    }
-//}
-
-//testing untuk lokal dibawah
 package com.example.eform.ui.auth
 
-import androidx.compose.foundation.Image
+import android.app.Application
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.input.*
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.eform.R
-import com.example.eform.data.database.UserDao
-import com.example.eform.data.local.UserPreferences
+import androidx.navigation.compose.rememberNavController
 import com.example.eform.data.model.LoginRequest
+// Hapus UserDao jika tidak digunakan lagi setelah beralih ke API sepenuhnya untuk login
+// import com.example.eform.data.database.UserDao
 import com.example.eform.navigation.Screen
-import com.example.eform.utils.AesEncryptionHelper
-import kotlinx.coroutines.launch
+import com.example.eform.ui.theme.EformTheme
+import com.example.eform.ui.viewmodel.AuthResult
+import com.example.eform.ui.viewmodel.AuthViewModel
 
 @Composable
-fun LoginScreen(navController: NavController, userDao: UserDao, onLoginSuccess: (String) -> Unit ) {
-    val coroutineScope = rememberCoroutineScope()
-    var nip by remember { mutableStateOf("") }
+fun LoginScreen(
+    navController: NavController,
+    onLoginSuccess: (String) -> Unit, // Callback ke MainActivity untuk menyimpan userIdentifier
+    authViewModel: AuthViewModel = viewModel(
+        factory = AuthViewModel.AuthViewModelFactory(LocalContext.current.applicationContext as Application)
+    )
+) {
+    val context = LocalContext.current
+    var nipOrEmail by remember { mutableStateOf("") } // Guru bisa login dengan NIP atau Email
     var password by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val loginResult by authViewModel.loginResult.collectAsState()
+    val isLoading = loginResult is AuthResult.Loading
+
+    LaunchedEffect(loginResult) {
+        when (val result = loginResult) {
+            is AuthResult.Success -> {
+                Toast.makeText(context, "Login Berhasil! Selamat datang ${result.authResponse.user.name}", Toast.LENGTH_SHORT).show()
+                // Ambil identifier yang sesuai (NIP untuk guru, email untuk siswa)
+                // Dalam AuthController Laravel Anda, 'login' sepertinya tidak membedakan peran secara langsung untuk field login
+                // Kita asumsikan jika peran "teacher", NIP ada dan digunakan. Jika "student", email digunakan.
+                val user = result.authResponse.user
+                val userIdentifier = if (user.role.equals("teacher", ignoreCase = true) && !user.nip.isNullOrBlank()) {
+                    user.nip
+                } else {
+                    user.email
+                }
+
+                onLoginSuccess(userIdentifier) // Kirim identifier ke MainActivity
+
+                if (user.role.equals("teacher", ignoreCase = true)) {
+                    navController.navigate(Screen.Dashboard.route.replace("{userIdentifier}", userIdentifier)) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                } else if (user.role.equals("student", ignoreCase = true)) {
+                    // Jika endpoint login ini juga bisa untuk siswa
+                    navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                } else {
+                    Toast.makeText(context, "Peran pengguna tidak dikenal: ${user.role}", Toast.LENGTH_LONG).show()
+                }
+                authViewModel.resetLoginResult() // Reset state setelah navigasi/tampil pesan
+            }
+            is AuthResult.Error -> {
+                Toast.makeText(context, "Login Gagal: ${result.message}", Toast.LENGTH_LONG).show()
+                authViewModel.resetLoginResult()
+            }
+            else -> { /* Idle atau Loading, ditangani oleh UI tombol */ }
+        }
+    }
 
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
-        verticalArrangement = Arrangement.Center
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(32.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text("Login Guru", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
-            value = nip,
-            onValueChange = { nip = it },
-            label = { Text("NIP") },
+            value = nipOrEmail,
+            onValueChange = { nipOrEmail = it },
+            label = { Text("NIP atau Email") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
-
         Spacer(modifier = Modifier.height(16.dp))
-
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
@@ -166,54 +103,49 @@ fun LoginScreen(navController: NavController, userDao: UserDao, onLoginSuccess: 
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth()
         )
-
         Spacer(modifier = Modifier.height(24.dp))
 
         Button(
             onClick = {
-                coroutineScope.launch {
-                    isLoading = true
-                    try {
-                        val user = userDao.getUserByNip(nip) // Mengambil user berdasarkan NIP
-                        if (user != null) {
-                            val decryptedPassword = AesEncryptionHelper.decrypt(user.password)
-                            if (password == decryptedPassword) {
-                                onLoginSuccess(nip)
-                                navController.navigate(Screen.Dashboard.route.replace("{userIdentifier}", nip)) {
-                                    popUpTo(Screen.Login.route) { inclusive = true }
-                                }
-                            } else {
-                                errorMessage = "Password salah"
-                            }
-                        } else {
-                            errorMessage = "NIP tidak ditemukan"
-                        }
-                    } catch (e: Exception) {
-                        errorMessage = "Gagal login: ${e.message}"
-                    }
-                    isLoading = false
+                if (nipOrEmail.isNotBlank() && password.isNotBlank()) {
+                    // API Login Laravel Anda menggunakan field 'email' untuk login,
+                    // jadi kita kirim nipOrEmail sebagai 'email'.
+                    // Backend akan memvalidasi apakah itu NIP (jika guru) atau email.
+                    authViewModel.login(LoginRequest(email = nipOrEmail, password = password))
+                } else {
+                    Toast.makeText(context, "NIP/Email dan Password tidak boleh kosong", Toast.LENGTH_SHORT).show()
                 }
             },
             enabled = !isLoading,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text(if (isLoading) "Loading..." else "Login")
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+            } else {
+                Text("Login")
+            }
         }
-
         Spacer(modifier = Modifier.height(12.dp))
-
-        errorMessage?.let {
-            Text(text = it, color = MaterialTheme.colorScheme.error)
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         TextButton(onClick = {
-            navController.navigate(Screen.Register.route) // Navigasi ke Register Guru
+            navController.navigate(Screen.Register.route)
         }) {
-            Text("Belum punya akun? Daftar")
+            Text("Belum punya akun? Daftar sebagai Guru")
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        TextButton(onClick = {
+            navController.navigate(Screen.Role.route){
+                popUpTo(Screen.Login.route){ inclusive = true}
+            }
+        }) {
+            Text("Kembali ke Pemilihan Peran")
         }
     }
 }
 
-
+@Preview(showBackground = true)
+@Composable
+fun LoginScreenPreview() {
+    EformTheme {
+        LoginScreen(navController = rememberNavController(), onLoginSuccess = {})
+    }
+}

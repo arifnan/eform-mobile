@@ -1,5 +1,6 @@
 package com.example.eform.ui.dashboard
 
+import android.app.Application // Diperlukan untuk ViewModel Factory
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,88 +20,36 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.rememberNavController
-import com.example.eform.data.database.AppDatabase
-import com.example.eform.data.model.FormEntity
-import com.example.eform.data.model.UserFavoriteFormEntity
 import com.example.eform.navigation.Screen
-import com.example.eform.ui.components.BottomBarItem
+import com.example.eform.ui.components.BottomBarItem // <<< Gunakan BottomBarItem yang benar
 import com.example.eform.ui.components.SimpleBottomNavigationBar
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-
-data class FormDisplayItem(
-    val formEntity: FormEntity,
-    var isFavorite: Boolean
-)
+import com.example.eform.ui.theme.EformTheme // Import tema untuk Preview
+import com.example.eform.ui.viewmodel.DashboardFormsResult
+import com.example.eform.ui.viewmodel.DashboardViewModel
 
 @Composable
-fun DashboardScreen(navController: NavController, userIdentifier: String) {
+fun DashboardScreen(
+    navController: NavController,
+    userIdentifier: String, // NIP Guru
+    dashboardViewModel: DashboardViewModel = viewModel(
+        factory = DashboardViewModel.DashboardViewModelFactory(LocalContext.current.applicationContext as Application)
+    )
+) {
+    val context = LocalContext.current // Masih bisa berguna untuk Toast atau resource lain
+    val formsResultState by dashboardViewModel.formsResult.collectAsState()
+    val userName by dashboardViewModel.userName.collectAsState()
+
     var searchQuery by remember { mutableStateOf("") }
-    // Gunakan List<FormDisplayItem> untuk menyimpan status favorit
-    var formsToDisplay by remember { mutableStateOf<List<FormDisplayItem>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var sortOrder by remember { mutableStateOf("asc") }
-    var userName by remember { mutableStateOf("Guru") }
-    var currentUserId by remember { mutableStateOf<Int?>(null) }
+    // sortOrder sekarang dikelola oleh ViewModel atau diteruskan ke loadTeacherDashboard
+    var sortOrderState by remember { mutableStateOf("asc") }
 
-    val context = LocalContext.current
-    val db = AppDatabase.getDatabase(context)
-    val formDao = db.formDao()
-    val userDao = db.userDao()
-    val userFavoriteFormDao = db.userFavoriteFormDao()
-    val coroutineScope = rememberCoroutineScope()
 
-    suspend fun getUserIdFromIdentifier(identifier: String): Int? {
-        // Asumsi guru menggunakan NIP sebagai identifier
-        val user = userDao.getUserByNip(identifier)
-        return user?.id
-    }
-
-    fun fetchFormsAndFavorites() {
-        coroutineScope.launch {
-            isLoading = true
-            withContext(Dispatchers.IO) {
-                val userId = currentUserId ?: getUserIdFromIdentifier(userIdentifier)
-                if (userId == null) {
-                    // Handle kasus userId tidak ditemukan (seharusnya tidak terjadi jika login benar)
-                    isLoading = false
-                    formsToDisplay = emptyList()
-                    return@withContext
-                }
-                currentUserId = userId // Simpan userId untuk penggunaan selanjutnya
-
-                val user = userDao.getUserByNip(userIdentifier) // atau getUserByEmail jika identifier adalah email
-                userName = user?.name ?: "Guru"
-
-                val allForms = formDao.getAllForms()
-                val favoriteFormIds = userFavoriteFormDao.getFavoriteFormIdsByUserId(userId).toSet()
-
-                val displayList = allForms.map { formEntity ->
-                    FormDisplayItem(
-                        formEntity = formEntity,
-                        isFavorite = favoriteFormIds.contains(formEntity.id)
-                    )
-                }
-                formsToDisplay = if (sortOrder == "asc") {
-                    displayList.sortedBy { it.formEntity.title.lowercase() }
-                } else {
-                    displayList.sortedByDescending { it.formEntity.title.lowercase() }
-                }
-            }
-            isLoading = false
-        }
-    }
-
-    LaunchedEffect(userIdentifier, sortOrder) {
-        // Dapatkan userId dulu sebelum fetch forms
-        withContext(Dispatchers.IO) {
-            currentUserId = getUserIdFromIdentifier(userIdentifier)
-        }
-        fetchFormsAndFavorites()
+    LaunchedEffect(userIdentifier, sortOrderState) {
+        dashboardViewModel.loadTeacherDashboard(userIdentifier, sortOrderState)
     }
 
     Scaffold(
@@ -126,8 +75,8 @@ fun DashboardScreen(navController: NavController, userIdentifier: String) {
                             }
                     )
                     Column(modifier = Modifier.padding(start = 8.dp)) {
-                        Text(text = "Hello, $userName",color= Color.White, style = MaterialTheme.typography.titleMedium)
-                        Text(text = "Welcome back",color= Color.White, style = MaterialTheme.typography.bodySmall)
+                        Text(text = "Hello, $userName", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        Text(text = "Welcome back", color = Color.White, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 Icon(
@@ -161,77 +110,86 @@ fun DashboardScreen(navController: NavController, userIdentifier: String) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 TextButton(onClick = {
-                    sortOrder = if (sortOrder == "asc") "desc" else "asc"
+                    sortOrderState = if (sortOrderState == "asc") "desc" else "asc"
+                    // LaunchedEffect akan memanggil dashboardViewModel.loadTeacherDashboard dengan sortOrderState baru
                 }) {
-                    Text("Sort by Title (${if (sortOrder == "asc") "A-Z" else "Z-A"})")
+                    Text("Sort by Title (${if (sortOrderState == "asc") "A-Z" else "Z-A"})")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
 
-                if (isLoading) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator()
-                    }
-                } else {
-                    val filteredList = formsToDisplay.filter {
-                        it.formEntity.title.contains(searchQuery, ignoreCase = true) ||
-                                it.formEntity.description.contains(searchQuery, ignoreCase = true)
-                    }
-                    if (filteredList.isEmpty()){
+                when (val result = formsResultState) {
+                    is DashboardFormsResult.Loading -> {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text(if(searchQuery.isNotBlank()) "Tidak ada formulir ditemukan." else "Anda belum membuat formulir.")
+                            CircularProgressIndicator()
                         }
-                    } else {
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            contentPadding = PaddingValues(vertical = 8.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            items(filteredList, key = { it.formEntity.id }) { formDisplayItem ->
-                                FormCardItem( // Menggunakan FormCardItem yang sama
-                                    form = formDisplayItem.formEntity, // Berikan FormEntity
-                                    isFavorite = formDisplayItem.isFavorite, // Berikan status favorit
-                                    onFormClick = { formId ->
-                                        navController.navigate(Screen.PreviewForm.route.replace("{formId}", "$formId"))
-                                    },
-                                    onToggleFavorite = { formId, newFavoriteStatus ->
-                                        coroutineScope.launch(Dispatchers.IO) {
-                                            currentUserId?.let { userId ->
-                                                if (newFavoriteStatus) {
-                                                    userFavoriteFormDao.addFavorite(UserFavoriteFormEntity(userId, formId))
-                                                } else {
-                                                    userFavoriteFormDao.removeFavorite(UserFavoriteFormEntity(userId, formId))
-                                                }
-                                                // Update UI dengan memuat ulang data
-                                                withContext(Dispatchers.Main){
-                                                    fetchFormsAndFavorites()
-                                                }
-                                            }
-                                        }
-                                    }
-                                )
+                    }
+                    is DashboardFormsResult.Success -> {
+                        val displayableForms = result.forms.filter {
+                            it.formApiData.title.contains(searchQuery, ignoreCase = true) ||
+                                    it.formApiData.description?.contains(searchQuery, ignoreCase = true) == true
+                        }
+                        if (displayableForms.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text(if (searchQuery.isNotBlank()) "Tidak ada formulir ditemukan." else "Anda belum membuat formulir.")
                             }
+                        } else {
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                items(displayableForms, key = { it.formApiData.id }) { formDisplayItem ->
+                                    FormCardItem(
+                                        form = formDisplayItem.formApiData, // Berikan FormApiModel
+                                        isFavorite = formDisplayItem.isUserFavorite,
+                                        onFormClick = { formId ->
+                                            navController.navigate(Screen.PreviewForm.route.replace("{formId}", "$formId"))
+                                        },
+                                        onToggleFavorite = { formId, newFavoriteStatus ->
+                                            dashboardViewModel.toggleFavoriteStatus(formId, newFavoriteStatus)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    is DashboardFormsResult.Error -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Error: ${result.message}")
+                            // Tambahkan tombol Retry jika perlu
                         }
                     }
                 }
             }
         },
         bottomBar = {
+            // State selectedIndex untuk bottom bar dikelola di sini
+            var selectedIndex by remember { mutableStateOf(0) }
             SimpleBottomNavigationBar(
-                selectedIndex = 0,
-                onItemSelected = { index ->
-                    val item = BottomBarItem.values()[index]
+                selectedIndex = selectedIndex,
+                onItemSelected = { newIndex ->
+                    selectedIndex = newIndex // Update state selectedIndex
+                    // Gunakan BottomBarItem yang benar (untuk guru)
+                    val item = BottomBarItem.values()[newIndex]
+                    val currentRoute = navController.currentBackStackEntry?.destination?.route
+
                     val targetRoute = when (item) {
-                        BottomBarItem.Home -> userIdentifier.let { Screen.Dashboard.route.replace("{userIdentifier}", it) }
-                        BottomBarItem.FavoriteForms -> Screen.FavoriteForms.route // Navigasi ke FavoriteForms
-                        BottomBarItem.Add -> Screen.CreateForm.route
-                        BottomBarItem.History -> Screen.HistoryForm.route
-                        BottomBarItem.Profile -> userIdentifier.let { Screen.Profile.route.replace("{userIdentifier}", it) }
+                        BottomBarItem.Home -> Screen.Dashboard.route.replace("{userIdentifier}", userIdentifier)
+                        BottomBarItem.FavoriteForms -> Screen.FavoriteForms.route.replace("{userIdentifier}", userIdentifier)
+                        BottomBarItem.Add -> Screen.CreateForm.route.replace("{userIdentifier}", userIdentifier)
+                        BottomBarItem.History -> Screen.HistoryForm.route // Tambahkan userIdentifier jika perlu
+                        BottomBarItem.Profile -> Screen.Profile.route.replace("{userIdentifier}", userIdentifier)
+                        // Tidak perlu 'else' jika semua kasus enum sudah ditangani
                     }
-                    if (navController.currentDestination?.route != targetRoute) {
+
+                    // Hanya navigasi jika target rute berbeda dengan rute saat ini
+                    if (currentRoute != targetRoute) {
                         navController.navigate(targetRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -244,10 +202,15 @@ fun DashboardScreen(navController: NavController, userIdentifier: String) {
     )
 }
 
-// Preview tetap, tapi FormCardItem perlu diupdate juga untuk Preview jika ingin menampilkan favorit
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
-fun DashboardPreview() {
-    val dummyNavController = rememberNavController()
-    DashboardScreen(navController = dummyNavController, userIdentifier = "dummyNip123")
+fun DashboardScreenPreview() { // Ganti nama Preview agar unik jika ada DashboardPreviewStudents
+    EformTheme {
+        val dummyNavController = rememberNavController()
+        DashboardScreen(
+            navController = dummyNavController,
+            userIdentifier = "dummyNip123"
+            // ViewModel akan di-provide oleh default factory di preview jika tidak ada factory khusus preview
+        )
+    }
 }

@@ -2,9 +2,10 @@ package com.example.eform.ui.form
 
 import android.Manifest
 import android.app.Activity
-import android.content.Context
+import android.app.Application
 import android.net.Uri
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -27,455 +28,417 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.eform.data.database.AppDatabase
-import com.example.eform.data.model.*
+import com.example.eform.data.model.FormEntity
+import com.example.eform.data.model.QuestionEntity
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.components.StandardTopAppBar
 import com.example.eform.ui.form.components.QuestionType
+import com.example.eform.ui.viewmodel.FormAnswerUiState
+import com.example.eform.ui.viewmodel.FormAnswerViewModel
 import com.example.eform.utils.CameraCaptureHelper
-import com.example.eform.utils.LocationHelper
+import com.example.eform.utils.Constants
 import com.example.eform.utils.NotificationHelper
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormAnswerScreen(
     navController: NavController,
-    formData: FormEntity,
-    userIdentifier: String // email siswa
+    formId: Int,
+    userIdentifier: String, // email siswa
+    formAnswerViewModel: FormAnswerViewModel = viewModel(
+        factory = FormAnswerViewModel.FormAnswerViewModelFactory(
+            LocalContext.current.applicationContext as Application
+        )
+    )
 ) {
     val context = LocalContext.current
-    val db = AppDatabase.getDatabase(context)
-    val formDao = db.formDao()
-    val userDao = db.userDao()
-    val notificationDao = db.notificationDao()
-    val formResponseDao = db.formResponseDao() // DAO baru untuk menyimpan respons
-    val coroutineScope = rememberCoroutineScope()
+    val uiState by formAnswerViewModel.uiState.collectAsState()
 
-    var questions by remember { mutableStateOf<List<QuestionEntity>>(emptyList()) }
-    val answers = remember { mutableStateMapOf<Int, String>() } // Key: questionId, Value: answer
-    var isLoadingQuestions by remember { mutableStateOf(true) }
-    var currentStudentId by remember { mutableStateOf<Int?>(null) }
-
-    // State untuk Lokasi
-    val locationHelper = remember { LocationHelper(context) }
-    var locationStatus by remember { mutableStateOf("Lokasi belum diambil") }
-    var capturedLatitude by remember { mutableStateOf<Double?>(null) }
-    var capturedLongitude by remember { mutableStateOf<Double?>(null) }
-    var isLocationValid by remember { mutableStateOf(false) }
-    var isLocationTaken by remember { mutableStateOf(false) }
-
-    // State untuk Kamera
-    val cameraHelper = remember { CameraCaptureHelper(context) }
+    // State lokal untuk UI yang tidak langsung dari ViewModel state
+    val answers = remember { mutableStateMapOf<Int, String>() }
     var capturedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var isPhotoTaken by remember { mutableStateOf(false) }
+    var photoFileForUpload by remember { mutableStateOf<File?>(null) }
+    var locationTaken by remember { mutableStateOf(false) }
+    var photoTaken by remember { mutableStateOf(false) }
+    var isLocationCurrentlyValid by remember { mutableStateOf(false) }
+    var locationMessageDisplay by remember { mutableStateOf("Lokasi belum diambil") }
+    var currentLatitude by remember { mutableStateOf<Double?>(null) }
+    var currentLongitude by remember { mutableStateOf<Double?>(null) }
 
-    // Target Lokasi (contoh, ganti dengan lokasi sekolah/target Anda)
-    // Medan, Sumatera Utara - sekitar Lapangan Merdeka
-    val targetLatitude = 3.5917
-    val targetLongitude = 98.6753
-    val targetRadius = 100.0 // meter
+    val cameraHelper = remember { CameraCaptureHelper(context) }
 
-    // Launcher untuk izin lokasi
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        ) {
-            locationHelper.getCurrentLocation(object : LocationHelper.LocationCallback {
-                override fun onLocationResult(lat: Double, lng: Double) {
-                    capturedLatitude = lat
-                    capturedLongitude = lng
-                    isLocationValid = locationHelper.isWithinRadius(lat, lng, targetLatitude, targetLongitude, targetRadius)
-                    locationStatus = if (isLocationValid) {
-                        "✅ Lokasi valid ($lat, $lng)"
-                    } else {
-                        "❌ Di luar area yang diizinkan ($lat, $lng). Pengisian formulir mungkin ditolak."
-                    }
-                    isLocationTaken = true
-                }
-
-                override fun onError(message: String) {
-                    locationStatus = "❌ Gagal mendapatkan lokasi: $message"
-                    isLocationTaken = false
-                }
-            })
-        } else {
-            locationStatus = "❌ Izin lokasi ditolak."
-            Toast.makeText(context, "Izin lokasi diperlukan untuk fitur ini.", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    // Launcher untuk izin kamera & ambil foto
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            // Izin diberikan, luncurkan kamera
-            val cameraIntent = cameraHelper.createCameraIntent()
-            // Kita butuh launcher baru untuk startActivityForResult
-            // cameraLauncherForResult.launch(cameraIntent) // Akan didefinisikan di bawah
-        } else {
-            Toast.makeText(context, "Izin kamera diperlukan untuk mengambil foto.", Toast.LENGTH_LONG).show()
-        }
-    }
     val cameraLauncherForResult = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            capturedImageUri = cameraHelper.photoUri
-            isPhotoTaken = true
-            Toast.makeText(context, "Foto berhasil diambil!", Toast.LENGTH_SHORT).show()
+            cameraHelper.photoUri?.let { uri ->
+                capturedImageUri = uri
+                photoTaken = true
+                // Konversi URI ke File untuk diupload
+                val tempFile = File(context.cacheDir, "upload_${System.currentTimeMillis()}.jpg")
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        FileOutputStream(tempFile).use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    photoFileForUpload = tempFile
+                    Toast.makeText(context, "Foto berhasil diambil!", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    Log.e("FormAnswerScreen", "Error converting URI to File: ${e.message}")
+                    Toast.makeText(context, "Gagal memproses foto.", Toast.LENGTH_SHORT).show()
+                    photoTaken = false
+                }
+            } ?: run {
+                photoTaken = false
+                Toast.makeText(context, "Gagal mendapatkan URI foto.", Toast.LENGTH_SHORT).show()
+            }
         } else {
+            photoTaken = false
             Toast.makeText(context, "Pengambilan foto dibatalkan.", Toast.LENGTH_SHORT).show()
-            isPhotoTaken = false
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val cameraIntent = cameraHelper.createCameraIntent()
+            if (cameraIntent.resolveActivity(context.packageManager) != null) {
+                cameraLauncherForResult.launch(cameraIntent)
+            } else {
+                Toast.makeText(context, "Tidak ada aplikasi kamera.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(context, "Izin kamera diperlukan.", Toast.LENGTH_LONG).show()
+        }
+    }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+
+        if (fineLocationGranted || coarseLocationGranted) {
+            formAnswerViewModel.validateLocation(
+                Constants.DEFAULT_TARGET_LATITUDE,
+                Constants.DEFAULT_TARGET_LONGITUDE,
+                Constants.LOCATION_VALIDATION_RADIUS_METERS
+            )
+        } else {
+            locationMessageDisplay = "❌ Izin lokasi ditolak."
+            Toast.makeText(context, "Izin lokasi diperlukan untuk fitur ini.", Toast.LENGTH_LONG).show()
         }
     }
 
+    LaunchedEffect(formId, userIdentifier) {
+        formAnswerViewModel.loadFormDetails(formId, userIdentifier)
+    }
 
-    LaunchedEffect(formData.id, userIdentifier) {
-        isLoadingQuestions = true
-        withContext(Dispatchers.IO) {
-            val student = userDao.getUserByEmail(userIdentifier)
-            currentStudentId = student?.id
-            questions = formDao.getQuestionsForForm(formData.id)
-            questions.forEach { question -> answers[question.id] = "" }
+    LaunchedEffect(uiState) {
+        when (val state = uiState) {
+            is FormAnswerUiState.LocationValidationResult -> {
+                locationTaken = true
+                isLocationCurrentlyValid = state.isValid
+                locationMessageDisplay = state.message
+                currentLatitude = state.lat
+                currentLongitude = state.lng
+            }
+            is FormAnswerUiState.SubmissionSuccess -> {
+                Toast.makeText(context, state.successMessage, Toast.LENGTH_LONG).show()
+                state.notificationMessageForSytem?.let { msg ->
+                    NotificationHelper.showNotification(
+                        context,
+                        (System.currentTimeMillis() % Int.MAX_VALUE).toInt(), // ID notif unik sederhana
+                        state.notificationTitle ?: "Formulir Terkirim!",
+                        msg,
+                        // Pastikan rute Screen.Notification menerima userIdentifier
+                        targetScreenRoute = Screen.Notification.route.replace("{userIdentifier}", userIdentifier)
+                    )
+                }
+                formAnswerViewModel.resetUiState()
+                navController.popBackStack() // Kembali setelah sukses
+            }
+            is FormAnswerUiState.SubmissionError -> {
+                Toast.makeText(context, state.error, Toast.LENGTH_LONG).show()
+                formAnswerViewModel.resetUiState()
+            }
+            else -> { /* Idle, LoadingQuestions, Submitting dihandle oleh UI lain */ }
         }
-        isLoadingQuestions = false
+    }
+
+    var currentFormTitle by remember { mutableStateOf("Isi Formulir") }
+    var currentFormDescription by remember { mutableStateOf("") }
+    var questionsForDisplay by remember { mutableStateOf<List<QuestionEntity>>(emptyList()) }
+
+    if (uiState is FormAnswerUiState.QuestionsLoaded) {
+        val loadedState = uiState as FormAnswerUiState.QuestionsLoaded
+        currentFormTitle = loadedState.form.title
+        currentFormDescription = loadedState.form.description
+        questionsForDisplay = loadedState.questions
+        // Inisialisasi map jawaban jika belum ada (hanya sekali saat pertanyaan dimuat)
+        LaunchedEffect(loadedState.questions) {
+            loadedState.questions.forEach { q -> answers.putIfAbsent(q.id, "") }
+        }
     }
 
     Scaffold(
-        topBar = {
-            StandardTopAppBar(title = "Isi Formulir: ${formData.title}", navController = navController)
-        }
+        topBar = { StandardTopAppBar(title = currentFormTitle, navController = navController) }
     ) { innerPadding ->
-        if (isLoadingQuestions) {
-            Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        when (uiState) {
+            FormAnswerUiState.LoadingQuestions, FormAnswerUiState.Idle -> {
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .verticalScroll(rememberScrollState()) // Buat seluruh Column bisa di-scroll
-                    .padding(16.dp)
-            ) {
-                // Detail Formulir (Judul & Deskripsi)
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            is FormAnswerUiState.QuestionsLoaded,
+            is FormAnswerUiState.LocationValidationResult, // Tetap tampilkan form saat validasi lokasi
+            is FormAnswerUiState.Submitting -> { // Tetap tampilkan form saat submitting, tombol akan disable
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = formData.title, style = MaterialTheme.typography.headlineSmall)
-                        if (formData.description.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(text = formData.description, style = MaterialTheme.typography.bodyMedium)
+                    Card(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = currentFormTitle, style = MaterialTheme.typography.headlineSmall)
+                            if (currentFormDescription.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(currentFormDescription, style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+
+                    questionsForDisplay.forEach { question ->
+                        QuestionDisplayItem(
+                            question = question,
+                            currentAnswer = answers[question.id] ?: "",
+                            onAnswerChange = { newAnswer -> answers[question.id] = newAnswer }
+                        )
+                        Spacer(Modifier.height(16.dp))
+                    }
+
+                    Divider(Modifier.padding(vertical = 16.dp))
+                    Text("Verifikasi Lokasi", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(locationMessageDisplay, style = MaterialTheme.typography.bodyMedium.copy(
+                        color = if (isLocationCurrentlyValid && locationTaken) Color(0xFF2E7D32) // Hijau tua
+                        else if (locationTaken) Color.Red
+                        else MaterialTheme.colorScheme.onSurface
+                    ))
+                    Spacer(Modifier.height(8.dp))
+                    Button(
+                        onClick = {
+                            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+                            } else {
+                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+                            }
+                            locationPermissionLauncher.launch(permissions)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.LocationOn, "Ambil Lokasi")
+                        Spacer(Modifier.width(8.dp))
+                        Text("Ambil Lokasi Saat Ini")
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    Divider(Modifier.padding(vertical = 16.dp))
+                    Text("Bukti Foto", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    if (capturedImageUri != null) {
+                        Image(
+                            painter = rememberAsyncImagePainter(capturedImageUri),
+                            contentDescription = "Foto Bukti",
+                            modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(8.dp)).background(Color.LightGray),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(Modifier.height(8.dp))
+                    }
+                    Button(
+                        onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CameraAlt, "Ambil Foto")
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (capturedImageUri == null) "Ambil Foto (Wajib)" else "Ambil Ulang Foto")
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                    Button(
+                        onClick = {
+                            val currentQuestions = (uiState as? FormAnswerUiState.QuestionsLoaded)?.questions ?: emptyList()
+                            val unansweredRequired = currentQuestions.filter {
+                                it.required && answers[it.id].isNullOrBlank()
+                            }
+                            if (unansweredRequired.isNotEmpty()) {
+                                Toast.makeText(context, "Harap isi semua pertanyaan wajib (*)", Toast.LENGTH_LONG).show()
+                                return@Button
+                            }
+                            formAnswerViewModel.submitAnswers(
+                                formId = formId, // formId dari parameter fungsi
+                                answersMap = answers.toMap(),
+                                photoFile = photoFileForUpload,
+                                latitude = currentLatitude,
+                                longitude = currentLongitude,
+                                isLocationPreviouslyValidatedAndCorrect = isLocationCurrentlyValid && locationTaken
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = uiState !is FormAnswerUiState.Submitting && locationTaken && photoTaken && isLocationCurrentlyValid
+                    ) {
+                        if (uiState is FormAnswerUiState.Submitting) {
+                            CircularProgressIndicator(Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Text("Kirim Jawaban")
                         }
                     }
                 }
-
-                // Daftar Pertanyaan
-                questions.forEach { question ->
-                    QuestionDisplayItem(
-                        question = question,
-                        currentAnswer = answers[question.id] ?: "",
-                        onAnswerChange = { newAnswer ->
-                            answers[question.id] = newAnswer
-                        }
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+            }
+            is FormAnswerUiState.SubmissionError -> { // Ditangani oleh LaunchedEffect, tapi bisa ada UI fallback
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    Text("Gagal mengirim. Silakan coba lagi atau periksa koneksi Anda.")
                 }
-
-                // Garis Pemisah
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-                // Bagian Lokasi
-                Text("Verifikasi Lokasi", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(locationStatus, style = MaterialTheme.typography.bodyMedium.copy(
-                    color = if (isLocationValid && isLocationTaken) Color.Green.copy(red=0.1f, green=0.5f, blue=0.1f) else if (isLocationTaken) Color.Red else MaterialTheme.colorScheme.onSurface
-                ))
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        val permissionsToRequest = mutableListOf<String>()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { // Android 12+
-                            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
-                            // ACCESS_COARSE_LOCATION sudah termasuk jika FINE diberikan
-                        } else {
-                            permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
-                            permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                        }
-                        locationPermissionLauncher.launch(permissionsToRequest.toTypedArray())
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.LocationOn, contentDescription = "Ambil Lokasi")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Ambil Lokasi Saat Ini")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-                // Bagian Kamera
-                Text("Bukti Foto", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.height(8.dp))
-                if (capturedImageUri != null) {
-                    Image(
-                        painter = rememberAsyncImagePainter(capturedImageUri),
-                        contentDescription = "Foto Bukti",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.LightGray),
-                        contentScale = ContentScale.Crop
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                Button(
-                    onClick = {
-                        // Minta izin kamera dulu
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        // Jika izin sudah ada, launcher di atas akan langsung ke else atau tidak melakukan apa-apa
-                        // Jadi, kita perlu meluncurkan kamera setelah izin diberikan
-                        // Ini akan dihandle oleh cameraLauncherForResult yang dipanggil setelah cameraPermissionLauncher
-                        // Jika izin sudah ada, langsung luncurkan
-                        val cameraIntent = cameraHelper.createCameraIntent()
-                        if (cameraIntent.resolveActivity(context.packageManager) != null) {
-                            cameraLauncherForResult.launch(cameraIntent)
-                        } else {
-                            Toast.makeText(context, "Tidak ada aplikasi kamera ditemukan.", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.CameraAlt, contentDescription = "Ambil Foto")
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (capturedImageUri == null) "Ambil Foto (Wajib)" else "Ambil Ulang Foto")
-                }
-
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                // Tombol Kirim Jawaban
-                Button(
-                    onClick = {
-                        if (currentStudentId == null) {
-                            Toast.makeText(context, "Gagal mengidentifikasi pengguna.", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-                        if (!isLocationTaken) {
-                            Toast.makeText(context, "Harap ambil lokasi terlebih dahulu.", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-                        if (!isLocationValid) {
-                            Toast.makeText(context, "Lokasi Anda di luar radius yang diizinkan. Pengisian ditolak.", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-                        if (!isPhotoTaken || capturedImageUri == null) {
-                            Toast.makeText(context, "Harap ambil foto bukti terlebih dahulu.", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-
-                        val unansweredRequiredQuestions = questions.filter {
-                            it.required && answers[it.id].isNullOrBlank()
-                        }
-                        if (unansweredRequiredQuestions.isNotEmpty()) {
-                            Toast.makeText(context, "Harap isi semua pertanyaan wajib (*)", Toast.LENGTH_LONG).show()
-                            return@Button
-                        }
-
-                        coroutineScope.launch {
-                            val response = FormResponseEntity(
-                                formId = formData.id,
-                                studentId = currentStudentId!!,
-                                photoUri = capturedImageUri.toString(),
-                                latitude = capturedLatitude,
-                                longitude = capturedLongitude,
-                                isLocationValid = isLocationValid
-                            )
-                            val responseId = withContext(Dispatchers.IO) {
-                                formResponseDao.insertFormResponse(response)
-                            }
-
-                            val answerEntities = answers.map { (questionId, answerText) ->
-                                AnswerEntity(
-                                    formResponseId = responseId.toInt(),
-                                    questionId = questionId,
-                                    answerText = answerText
-                                )
-                            }
-                            withContext(Dispatchers.IO) {
-                                formResponseDao.insertAnswers(answerEntities)
-                            }
-
-                            // Notifikasi untuk Murid
-                            val notificationMessage = "Anda berhasil mengisi formulir: ${formData.title}!"
-                            val newNotification = NotificationEntity(
-                                userId = currentStudentId!!,
-                                title = "Formulir Terkirim!",
-                                message = notificationMessage
-                            )
-                            val notificationIdFromDb = withContext(Dispatchers.IO) {
-                                notificationDao.insertNotification(newNotification).toInt()
-                            }
-
-                            val currentNotifCount = withContext(Dispatchers.IO) {
-                                notificationDao.getNotificationCountForUser(currentStudentId!!)
-                            }
-                            if (currentNotifCount > 8) {
-                                val oldestNotif = withContext(Dispatchers.IO) { notificationDao.getOldestNotificationForUser(currentStudentId!!) }
-                                oldestNotif?.let { withContext(Dispatchers.IO) { notificationDao.deleteNotificationById(it.id) } }
-                            }
-
-                            NotificationHelper.showNotification(
-                                context,
-                                notificationIdFromDb,
-                                "Formulir Berhasil Diisi!",
-                                notificationMessage,
-                                targetScreenRoute = Screen.Notification.route.replace("{userIdentifier}", userIdentifier)
-                            )
-
-                            Toast.makeText(context, "Jawaban berhasil dikirim!", Toast.LENGTH_SHORT).show()
-                            navController.popBackStack()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = isLocationTaken && isPhotoTaken // Tombol kirim aktif jika lokasi & foto sudah diambil
-                ) {
-                    Text(text = "Kirim Jawaban")
+            }
+            else -> { // State lain yang mungkin belum tercover eksplisit di UI utama
+                Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
+                    Text("Memuat...")
                 }
             }
         }
     }
 }
 
-// Composable QuestionDisplayItem tetap sama seperti respons sebelumnya
+// Composable QuestionDisplayItem (tetap sama seperti sebelumnya)
 @Composable
 fun QuestionDisplayItem(
     question: QuestionEntity,
     currentAnswer: String,
     onAnswerChange: (String) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.Top) { // Align top agar bintang sejajar dengan baris pertama teks
-            Text(
-                text = question.questionText,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f)
-            )
-            if (question.required) {
-                Text(" *", color = Color.Red, style = MaterialTheme.typography.titleMedium) // Beri spasi sebelum bintang
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-
-        when (question.questionType) {
-            QuestionType.Text -> {
-                OutlinedTextField(
-                    value = currentAnswer,
-                    onValueChange = onAnswerChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Jawaban Anda") },
-                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default), // ImeAction.Next atau Done
-                    maxLines = 5 // Izinkan multiple lines untuk jawaban teks yang lebih panjang
-                )
-            }
-            QuestionType.MultipleChoice -> {
-                Column {
-                    question.options.forEach { option ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { onAnswerChange(option) }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = (currentAnswer == option),
-                                onClick = { onAnswerChange(option) }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(option)
-                        }
-                    }
-                }
-            }
-            QuestionType.Checkbox -> {
-                val selectedOptions = remember(currentAnswer) {
-                    currentAnswer.split(";;").filter { it.isNotBlank() }.toMutableSet() // Gunakan pemisah yang unik
-                }
-                Column {
-                    question.options.forEach { option ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    if (selectedOptions.contains(option)) {
-                                        selectedOptions.remove(option)
-                                    } else {
-                                        selectedOptions.add(option)
-                                    }
-                                    onAnswerChange(selectedOptions.joinToString(";;"))
-                                }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Checkbox(
-                                checked = selectedOptions.contains(option),
-                                onCheckedChange = { isChecked ->
-                                    if (isChecked) {
-                                        selectedOptions.add(option)
-                                    } else {
-                                        selectedOptions.remove(option)
-                                    }
-                                    onAnswerChange(selectedOptions.joinToString(";;"))
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(option)
-                        }
-                    }
-                }
-            }
-            QuestionType.LinearScale -> {
-                val scaleValue = currentAnswer.toFloatOrNull() ?: question.options.getOrNull(0)?.toFloatOrNull() ?: 0f
-                val minScale = question.options.getOrNull(0)?.toFloatOrNull() ?: 0f
-                val maxScale = question.options.getOrNull(1)?.toFloatOrNull() ?: 5f
-                // Pastikan maxScale lebih besar dari minScale untuk menghindari error pada steps
-                val steps = if (maxScale > minScale) (maxScale.toInt() - minScale.toInt() - 1).coerceAtLeast(0) else 0
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp), // Padding untuk label skala
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ){
-                        Text(question.options.getOrNull(2) ?: minScale.toInt().toString(), style = MaterialTheme.typography.bodySmall)
-                        Text(question.options.getOrNull(3) ?: maxScale.toInt().toString(), style = MaterialTheme.typography.bodySmall)
-                    }
-                    Slider(
-                        value = scaleValue,
-                        onValueChange = { onAnswerChange(it.toInt().toString()) },
-                        valueRange = minScale..maxScale,
-                        steps = steps,
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
-                    )
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) { // Beri padding bawah antar pertanyaan
+        Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(1.dp)){ // Bungkus pertanyaan dalam Card
+            Column(Modifier.padding(12.dp)){
+                Row(verticalAlignment = Alignment.Top) {
                     Text(
-                        text = "Pilihan Anda: ${currentAnswer.ifEmpty { "-" }}",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = question.questionText,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.weight(1f)
                     )
+                    if (question.required) {
+                        Text(" *", color = Color.Red, style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                when (question.questionType) {
+                    QuestionType.Text -> {
+                        OutlinedTextField(
+                            value = currentAnswer,
+                            onValueChange = onAnswerChange,
+                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Jawaban Anda") },
+                            keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Default),
+                            maxLines = 5
+                        )
+                    }
+                    QuestionType.MultipleChoice -> {
+                        Column {
+                            question.options.forEach { option ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onAnswerChange(option) }
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    RadioButton(
+                                        selected = (currentAnswer == option),
+                                        onClick = { onAnswerChange(option) }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(option)
+                                }
+                            }
+                        }
+                    }
+                    QuestionType.Checkbox -> {
+                        val selectedOptions = remember(currentAnswer) {
+                            currentAnswer.split(";;").filter { it.isNotBlank() }.toMutableSet()
+                        }
+                        Column {
+                            question.options.forEach { option ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (selectedOptions.contains(option)) {
+                                                selectedOptions.remove(option)
+                                            } else {
+                                                selectedOptions.add(option)
+                                            }
+                                            onAnswerChange(selectedOptions.joinToString(";;"))
+                                        }
+                                        .padding(vertical = 4.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = selectedOptions.contains(option),
+                                        onCheckedChange = { isChecked ->
+                                            if (isChecked) {
+                                                selectedOptions.add(option)
+                                            } else {
+                                                selectedOptions.remove(option)
+                                            }
+                                            onAnswerChange(selectedOptions.joinToString(";;"))
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(option)
+                                }
+                            }
+                        }
+                    }
+                    QuestionType.LinearScale -> {
+                        val scaleValue = currentAnswer.toFloatOrNull() ?: question.options.getOrNull(0)?.toFloatOrNull() ?: 0f
+                        val minScale = question.options.getOrNull(0)?.toFloatOrNull() ?: 0f
+                        val maxScale = question.options.getOrNull(1)?.toFloatOrNull() ?: 5f
+                        val steps = if (maxScale > minScale) (maxScale.toInt() - minScale.toInt() - 1).coerceAtLeast(0) else 0
+
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Row(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ){
+                                Text(question.options.getOrNull(2) ?: minScale.toInt().toString(), style = MaterialTheme.typography.bodySmall)
+                                Text(question.options.getOrNull(3) ?: maxScale.toInt().toString(), style = MaterialTheme.typography.bodySmall)
+                            }
+                            Slider(
+                                value = scaleValue,
+                                onValueChange = { onAnswerChange(it.toInt().toString()) },
+                                valueRange = minScale..maxScale,
+                                steps = steps,
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+                            )
+                            Text(
+                                text = "Pilihan Anda: ${currentAnswer.ifEmpty { "-" }}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
                 }
             }
         }
