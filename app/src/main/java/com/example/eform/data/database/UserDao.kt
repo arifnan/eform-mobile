@@ -39,4 +39,8 @@ interface UserDao {
 
     @Update
     suspend fun updateUser(user: UserEntity) // Tambahkan fungsi update
+
+    @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
+    suspend fun getUserById(userId: Int): UserEntity?
+
 }

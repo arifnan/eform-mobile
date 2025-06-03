@@ -32,7 +32,6 @@ fun BottomBarNavigation(navController: NavController, userIdentifier: String) {
             BottomBarItem.History -> HistoryFormScreen(navController) // TODO: Tambahkan userIdentifier jika perlu
             BottomBarItem.Profile -> ProfileScreen(
                 navController = navController,
-                userDao = userDao,
                 userIdentifier = userIdentifier // Sudah benar menggunakan userIdentifier
             )
             null -> { /* Handle kasus indeks di luar rentang jika perlu, misal default ke Home */

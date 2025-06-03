@@ -135,11 +135,19 @@ fun AppNavHost(
         ) { backStackEntry ->
             val userIdentifier = backStackEntry.arguments?.getString("userIdentifier")
             if (userIdentifier.isNullOrBlank()) {
-                LaunchedEffect(Unit) { navController.navigate(Screen.Role.route) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
+                LaunchedEffect(Unit) {
+                    navController.navigate(Screen.Role.route) {
+                        popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
             } else {
-                // ProfileScreen masih menggunakan userDao langsung, ini bisa diubah ke ViewModel nanti
-                val db = AppDatabase.getDatabase(LocalContext.current)
-                ProfileScreen(navController, db.userDao(), userIdentifier)
+                val profileViewModelFactory = ProfileViewModel.ProfileViewModelFactory(application)
+                ProfileScreen( // Hapus parameter userDao jika ProfileScreen akan menggunakan ProfileViewModel
+                    navController = navController,
+                    userIdentifier = userIdentifier, // ProfileScreen akan menggunakan ini untuk memanggil load di ViewModel
+                    profileViewModel = viewModel(factory = profileViewModelFactory)
+                )
             }
         }
 

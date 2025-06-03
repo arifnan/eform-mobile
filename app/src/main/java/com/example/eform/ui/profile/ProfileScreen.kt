@@ -1,8 +1,10 @@
 package com.example.eform.ui.profile
 
+import android.app.Application
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler // <<< --- IMPORT BackHandler
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -35,67 +37,76 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
-import com.example.eform.data.database.UserDao
-import com.example.eform.data.model.UserEntity
+import com.example.eform.R
+import com.example.eform.data.model.api.UserApiModel
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.theme.EformTheme
-import kotlinx.coroutines.Dispatchers
+import com.example.eform.ui.viewmodel.AuthViewModel
+import com.example.eform.ui.viewmodel.ProfileUiState
+import com.example.eform.ui.viewmodel.ProfileViewModel
+import com.example.eform.ui.viewmodel.UpdateProfileResult
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
     navController: NavController,
-    userDao: UserDao,
-    userIdentifier: String
+    userIdentifier: String,
+    profileViewModel: ProfileViewModel = viewModel(
+        factory = ProfileViewModel.ProfileViewModelFactory(LocalContext.current.applicationContext as Application)
+    ),
+    authViewModel: AuthViewModel = viewModel(
+        factory = AuthViewModel.AuthViewModelFactory(LocalContext.current.applicationContext as Application)
+    )
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    var currentUser by remember { mutableStateOf<UserEntity?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val uiState by profileViewModel.uiState.collectAsState()
+    val updateResult by profileViewModel.updateResult.collectAsState()
 
     var editMode by remember { mutableStateOf(false) }
-    var editableName by remember { mutableStateOf("") }
-    var editableEmail by remember { mutableStateOf("") }
-    var editableNip by remember { mutableStateOf("") }
-    var editableAddress by remember { mutableStateOf("") }
 
-    var imageUri by remember { mutableStateOf<Uri?>(null) }
+    val editableName by profileViewModel.editableName.collectAsState()
+    val editableAddress by profileViewModel.editableAddress.collectAsState()
+    val imageUri by profileViewModel.profileImageUri.collectAsState()
+    val currentProfilePhotoUrl by profileViewModel.currentProfilePhotoUrl.collectAsState()
+
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        imageUri = uri
+        profileViewModel.onProfileImageUriChanged(uri)
     }
 
-    fun loadUserData(user: UserEntity?) {
-        currentUser = user
-        user?.let {
-            editableName = it.name
-            editableEmail = it.email
-            editableNip = it.nip
-            editableAddress = it.address ?: ""
-        }
-    }
-
-    LaunchedEffect(userIdentifier) {
-        isLoading = true
-        withContext(Dispatchers.IO) {
-            val userByNip = userDao.getUserByNip(userIdentifier)
-            val user = if (userByNip != null) userByNip else userDao.getUserByEmail(userIdentifier)
-            withContext(Dispatchers.Main) {
-                loadUserData(user)
-                isLoading = false
+    LaunchedEffect(updateResult) {
+        when (val result = updateResult) {
+            is UpdateProfileResult.Success -> {
+                Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                editMode = false
+                profileViewModel.resetUpdateResult()
             }
+            is UpdateProfileResult.Error -> {
+                Toast.makeText(context, "Update Gagal: ${result.message}", Toast.LENGTH_LONG).show()
+                profileViewModel.resetUpdateResult()
+            }
+            else -> { /* Idle atau Loading */ }
         }
     }
 
-    // Tangani tombol kembali sistem saat dalam mode edit
+    fun resetEditableFieldsToCurrentProfileData(user: UserApiModel?) {
+        user?.let {
+            profileViewModel.onNameChanged(it.name ?: "")
+            profileViewModel.onAddressChanged(it.address ?: "")
+            profileViewModel.onProfileImageUriChanged(null)
+        }
+    }
+
     if (editMode) {
         BackHandler(enabled = true) {
-            editMode = false // Keluar dari mode edit
-            currentUser?.let { loadUserData(it) } // Reset perubahan
+            editMode = false
+            if (uiState is ProfileUiState.Success) {
+                resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
+            }
             Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
         }
     }
@@ -103,47 +114,38 @@ fun ProfileScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        text = "Profile",
-                        fontSize = 25.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                },
+                title = { Text("Profile", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White) },
                 navigationIcon = {
                     IconButton(onClick = {
                         if (editMode) {
                             editMode = false
-                            currentUser?.let { loadUserData(it) }
+                            if (uiState is ProfileUiState.Success) {
+                                resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
+                            }
                             Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
                         } else {
                             navController.popBackStack()
                         }
                     }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = if (editMode) "Batal Edit" else "Kembali",
-                            tint = Color.White
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, if (editMode) "Batal Edit" else "Kembali", tint = Color.White)
                     }
                 },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                )
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
             )
         }
-    ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+    ) { paddingValues ->
+        when (val currentUiState = uiState) {
+            ProfileUiState.Loading -> {
+                Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
             }
-        } else {
-            currentUser?.let { user ->
+            is ProfileUiState.Success -> {
+                val user = currentUiState.user
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(padding)
+                        .padding(paddingValues)
                         .background(MaterialTheme.colorScheme.background)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                         .verticalScroll(rememberScrollState())
@@ -158,119 +160,79 @@ fun ProfileScreen(
                             .align(Alignment.CenterHorizontally)
                             .clickable(enabled = editMode) { pickImage.launch("image/*") }
                     ) {
-                        if (imageUri != null) {
-                            Image(
-                                painter = rememberAsyncImagePainter(imageUri),
-                                contentDescription = "Profile Picture",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.AccountCircle,
-                                contentDescription = "Default Profile",
-                                modifier = Modifier.fillMaxSize(),
-                                tint = Color.DarkGray
-                            )
-                        }
+                        val imageToDisplay = imageUri ?: currentProfilePhotoUrl
+                        Image(
+                            painter = rememberAsyncImagePainter(
+                                model = imageToDisplay ?: R.drawable.ic_default_profile
+                            ),
+                            contentDescription = "Profile Picture",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
                         if (editMode) {
                             Box(
                                 contentAlignment = Alignment.BottomEnd,
                                 modifier = Modifier.fillMaxSize().padding(8.dp)
                             ) {
-                                Icon(
-                                    Icons.Default.Edit, contentDescription = "Edit Foto",
-                                    tint = Color.White,
-                                    modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape).padding(4.dp)
-                                )
+                                Icon(Icons.Default.Edit, "Edit Foto", tint = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape).padding(4.dp))
                             }
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = if (editMode) editableName else user.name,
+                        text = if (editMode) editableName else (user.name ?: "Nama Tidak Tersedia"),
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.onBackground,
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     )
                     Text(
-                        text = user.email,
+                        text = user.email ?: "Email Tidak Tersedia",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.align(Alignment.CenterHorizontally)
                     )
-
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    ProfileDataField(
-                        label = "Nama Lengkap",
-                        value = editableName,
-                        editMode = editMode,
-                        onValueChange = { editableName = it }
-                    )
-                    ProfileDataField(
-                        label = "Email",
-                        value = user.email,
-                        editMode = false
-                    )
-                    if (user.role.equals("guru", ignoreCase = true) && user.nip.isNotBlank()) {
-                        ProfileDataField(
-                            label = "NIP",
-                            value = user.nip,
-                            editMode = false
-                        )
+                    ProfileDataField(label = "Nama Lengkap", value = editableName, editMode = editMode, onValueChange = { profileViewModel.onNameChanged(it) })
+                    ProfileDataField(label = "Email", value = user.email ?: "-", editMode = false)
+
+                    if (user.role.equals("teacher", ignoreCase = true)) {
+                        ProfileDataField(label = "NIP", value = user.nip ?: "-", editMode = false)
+                        ProfileDataField(label = "Mata Pelajaran", value = user.subject ?: "-", editMode = false)
+                    } else if (user.role.equals("student", ignoreCase = true)) {
+                        ProfileDataField(label = "Kelas", value = user.grade ?: "-", editMode = false)
                     }
-                    ProfileDataField(
-                        label = "Alamat",
-                        value = editableAddress,
-                        editMode = editMode,
-                        onValueChange = { editableAddress = it },
-                        singleLine = false,
-                        maxLines = 3
-                    )
+                    ProfileDataField(label = "Alamat", value = editableAddress, editMode = editMode, onValueChange = { profileViewModel.onAddressChanged(it) }, singleLine = false, maxLines = 3)
 
                     Spacer(modifier = Modifier.weight(1f))
 
                     Button(
                         onClick = {
                             if (editMode) {
-                                coroutineScope.launch {
-                                    val updatedUser = user.copy(
-                                        name = editableName,
-                                        address = editableAddress.ifBlank { null }
-                                    )
-                                    withContext(Dispatchers.IO) {
-                                        userDao.updateUser(updatedUser)
-                                    }
-                                    loadUserData(updatedUser)
-                                    editMode = false
-                                    Toast.makeText(context, "Profil berhasil diperbarui", Toast.LENGTH_SHORT).show()
-                                }
+                                profileViewModel.saveProfileChanges(context)
                             } else {
                                 editMode = true
+                                resetEditableFieldsToCurrentProfileData(user)
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                        enabled = !(editMode && updateResult is UpdateProfileResult.Loading)
                     ) {
-                        Icon(
-                            imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit,
-                            contentDescription = if (editMode) "Simpan Perubahan" else "Edit Profile"
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (editMode) "Simpan Perubahan" else "Edit Profile",
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
+                        if (editMode && updateResult is UpdateProfileResult.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                        } else {
+                            Icon(imageVector = if (editMode) Icons.Default.Check else Icons.Default.Edit, contentDescription = if (editMode) "Simpan" else "Edit")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (editMode) "Simpan Perubahan" else "Edit Profile", color = MaterialTheme.colorScheme.onPrimary)
+                        }
                     }
-
                     Button(
                         onClick = {
-                            coroutineScope.launch {
-                                navController.navigate(Screen.Role.route) {
-                                    popUpTo(navController.graph.startDestinationId) { inclusive = true }
-                                    launchSingleTop = true
-                                }
+                            authViewModel.logout()
+                            navController.navigate(Screen.Role.route) {
+                                popUpTo(navController.graph.startDestinationId) { inclusive = true }
+                                launchSingleTop = true
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -279,9 +241,15 @@ fun ProfileScreen(
                         Text("LOG OUT", color = MaterialTheme.colorScheme.onError)
                     }
                 }
-            } ?: run {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text("Gagal memuat data pengguna atau pengguna tidak ditemukan.")
+            }
+            is ProfileUiState.Error -> {
+                Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                    Text(currentUiState.message)
+                }
+            }
+            ProfileUiState.Idle -> {
+                Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
+                    Text("Tidak ada data profil yang tersedia.")
                 }
             }
         }
@@ -306,7 +274,6 @@ fun ProfileDataField(
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             modifier = Modifier.padding(start = 4.dp, bottom = 4.dp)
         )
-        // Hanya Nama dan Alamat yang bisa jadi TextField (sesuai logika tombol edit tunggal)
         val isEditableField = (label == "Nama Lengkap" || label == "Alamat")
         if (editMode && isEditableField) {
             OutlinedTextField(
@@ -330,14 +297,14 @@ fun ProfileDataField(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
                 colors = cardColors(
-                    containerColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.surface
                 ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Text(
                     text = value.ifEmpty { "-" },
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Normal),
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 16.dp)
@@ -347,45 +314,13 @@ fun ProfileDataField(
     }
 }
 
-// Preview dan FakeUserDao bisa tetap sama
-class FakeUserDaoForProfilePreview : UserDao {
-    private val dummyUserStudent = UserEntity(id = 1, name = "Murid Nanda", email = "nanda.murid@example.com", nip = "", password = "password123", role = "siswa", address = "Jl. Pelajar No. 1, Medan")
-    private val dummyUserTeacher = UserEntity(id = 2, name = "Guru Nanda", email = "nanda.guru@example.com", nip = "123456789012345678", password = "password123", role = "guru", address = "Jl. Mengajar No. 10, Medan")
-
-    override suspend fun insertUser(user: UserEntity) {}
-    override suspend fun updateUser(user: UserEntity) {}
-    override suspend fun getUserByEmail(email: String): UserEntity? {
-        return when (email) {
-            dummyUserStudent.email -> dummyUserStudent
-            dummyUserTeacher.email -> dummyUserTeacher
-            else -> null
-        }
-    }
-    override suspend fun getUserByNip(nip: String): UserEntity? {
-        return if (nip == dummyUserTeacher.nip) dummyUserTeacher else null
-    }
-}
-
-@Preview(showBackground = true, name = "Profile Screen Student View Mode")
+@Preview(showBackground = true, name = "Profile Screen Preview")
 @Composable
-fun PreviewProfileScreenStudentView() {
+fun PreviewProfileScreenWithViewModel() {
     EformTheme {
         ProfileScreen(
             navController = rememberNavController(),
-            userDao = FakeUserDaoForProfilePreview(),
-            userIdentifier = "nanda.murid@example.com"
-        )
-    }
-}
-
-@Preview(showBackground = true, name = "Profile Screen Teacher View Mode")
-@Composable
-fun PreviewProfileScreenTeacherView() {
-    EformTheme {
-        ProfileScreen(
-            navController = rememberNavController(),
-            userDao = FakeUserDaoForProfilePreview(),
-            userIdentifier = "123456789012345678"
+            userIdentifier = "dummyNip123"
         )
     }
 }

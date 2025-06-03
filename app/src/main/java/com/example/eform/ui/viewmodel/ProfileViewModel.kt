@@ -1,5 +1,7 @@
 package com.example.eform.ui.viewmodel
 
+
+import com.example.eform.data.model.api.UserApiModel
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -9,8 +11,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.eform.data.api.RetrofitInstance
+import com.example.eform.data.database.AppDatabase
+import com.example.eform.data.database.UserDao
 import com.example.eform.data.local.UserPreferences
-import com.example.eform.data.model.api.UserApiModel
+import com.example.eform.data.model.UserEntity
 import com.example.eform.data.repository.AuthRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,6 +44,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     private val userPreferences = UserPreferences(application)
     private val authRepository = AuthRepository(RetrofitInstance.api, userPreferences)
+    private val userDao: UserDao = AppDatabase.getDatabase(application).userDao()
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
@@ -49,8 +54,8 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     val editableName = MutableStateFlow("")
     val editableAddress = MutableStateFlow("")
-    val profileImageUri = MutableStateFlow<Uri?>(null) // URI dari image picker
-    val currentProfilePhotoUrl = MutableStateFlow<String?>(null) // URL foto dari server
+    val profileImageUri = MutableStateFlow<Uri?>(null)
+    val currentProfilePhotoUrl = MutableStateFlow<String?>(null)
 
     init {
         loadUserProfile()
@@ -62,16 +67,53 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             val result = authRepository.getAuthenticatedUser()
             result.fold(
                 onSuccess = { userApiModel ->
+                    Log.d("PROFILE_VM_LOAD", "User API Model received: $userApiModel")
                     _uiState.value = ProfileUiState.Success(userApiModel)
-                    editableName.value = userApiModel.name
+                    editableName.value = userApiModel.name ?: "" // Default ke string kosong
                     editableAddress.value = userApiModel.address ?: ""
                     currentProfilePhotoUrl.value = userApiModel.profilePhotoUrl
-                    profileImageUri.value = null // Reset pilihan foto baru
+                    profileImageUri.value = null
+                    saveOrUpdateUserInLocalDb(userApiModel, "loadUserProfile")
                 },
                 onFailure = { exception ->
+                    Log.e("PROFILE_VM_LOAD", "Failed to load user profile: ${exception.message}", exception)
                     _uiState.value = ProfileUiState.Error(exception.message ?: "Gagal memuat profil pengguna")
                 }
             )
+        }
+    }
+
+    private fun saveOrUpdateUserInLocalDb(userApiModel: UserApiModel, sourceTag: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val existingUser = userDao.getUserById(userApiModel.id)
+                val passwordForDb = existingUser?.password ?: ""
+
+                // Pastikan semua field non-nullable di UserEntity mendapatkan nilai yang valid
+                val entityName = userApiModel.name ?: "N/A"
+                val entityEmail = userApiModel.email ?: "N/A" // Seharusnya email tidak pernah null dari API jika login berhasil
+                val entityRole = userApiModel.role ?: "unknown" // Seharusnya role tidak pernah null
+
+                val userEntity = UserEntity(
+                    id = userApiModel.id,
+                    name = entityName,
+                    email = entityEmail,
+                    nip = userApiModel.nip ?: "",
+                    password = passwordForDb, // Jaga password lama atau kosongkan jika baru
+                    role = entityRole,
+                    address = userApiModel.address // address di UserEntity sudah nullable
+                )
+
+                if (existingUser != null) {
+                    userDao.updateUser(userEntity)
+                    Log.d("PROFILE_VM_DB", "User profile updated in local DB via $sourceTag: $userEntity")
+                } else {
+                    userDao.insertUser(userEntity)
+                    Log.w("PROFILE_VM_DB", "User not found locally via $sourceTag, inserted new: $userEntity")
+                }
+            } catch (e: Exception) {
+                Log.e("PROFILE_VM_DB", "Error saving/updating user profile in local DB via $sourceTag: ${e.message}", e)
+            }
         }
     }
 
@@ -87,7 +129,6 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         profileImageUri.value = uri
     }
 
-    // Helper function to convert URI to File (harus dijalankan di context yang sesuai, misal dari Composable)
     private fun getFileFromUri(context: Context, uri: Uri, fileNamePrefix: String): File? {
         return try {
             val tempFile = File(context.cacheDir, "${fileNamePrefix}_${System.currentTimeMillis()}.jpg")
@@ -103,8 +144,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-
-    fun saveProfileChanges(contextForFile: Context /* Diperlukan untuk konversi URI ke File */) {
+    fun saveProfileChanges(contextForFile: Context) {
         val currentState = _uiState.value
         if (currentState !is ProfileUiState.Success) {
             _updateResult.value = UpdateProfileResult.Error("Data pengguna saat ini tidak tersedia.")
@@ -123,19 +163,19 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
         newImageUri?.let { uri ->
             photoFileToUpload = getFileFromUri(contextForFile, uri, "profile_photo")
-            if (photoFileToUpload == null) {
+            if (photoFileToUpload == null && newImageUri != null) {
                 _updateResult.value = UpdateProfileResult.Error("Gagal memproses file gambar profil.")
-                return // Hentikan jika file tidak bisa dibuat
+                return
             }
         }
 
         _updateResult.value = UpdateProfileResult.Loading
         viewModelScope.launch {
-            // Hanya kirim field yang berubah atau ada nilainya.
-            // API Laravel Anda mungkin mengabaikan field null atau string kosong.
+            // Kirim null jika tidak ada perubahan, atau string kosong jika field direset menjadi kosong
             val nameToSend = if (newName != currentState.user.name) newName else null
             val addressToSend = if (newAddress != (currentState.user.address ?: "")) newAddress.ifBlank { null } else null
 
+            Log.d("PROFILE_VM_API", "Updating profile via API. Name: $nameToSend, Address: $addressToSend, Photo: ${photoFileToUpload?.name}")
 
             val result = authRepository.updateUserProfile(
                 name = nameToSend,
@@ -145,16 +185,21 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
             result.fold(
                 onSuccess = { updatedUserApiModel ->
+                    Log.d("PROFILE_VM_API", "API update profile success: $updatedUserApiModel")
                     _uiState.value = ProfileUiState.Success(updatedUserApiModel)
-                    editableName.value = updatedUserApiModel.name
+                    editableName.value = updatedUserApiModel.name ?: ""
                     editableAddress.value = updatedUserApiModel.address ?: ""
                     currentProfilePhotoUrl.value = updatedUserApiModel.profilePhotoUrl
-                    profileImageUri.value = null // Reset URI setelah sukses
-                    photoFileToUpload?.delete() // Hapus file temporer
+                    profileImageUri.value = null
+                    photoFileToUpload?.delete()
+
+                    saveOrUpdateUserInLocalDb(updatedUserApiModel, "saveProfileChanges_ApiSuccess")
+
                     _updateResult.value = UpdateProfileResult.Success(updatedUserApiModel, "Profil berhasil diperbarui.")
                 },
                 onFailure = { exception ->
-                    photoFileToUpload?.delete() // Hapus file temporer jika gagal juga
+                    Log.e("PROFILE_VM_API", "API update profile failed: ${exception.message}", exception)
+                    photoFileToUpload?.delete()
                     _updateResult.value = UpdateProfileResult.Error(exception.message ?: "Gagal memperbarui profil.")
                 }
             )
