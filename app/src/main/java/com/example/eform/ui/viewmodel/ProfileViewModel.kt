@@ -1,6 +1,5 @@
 package com.example.eform.ui.viewmodel
 
-
 import com.example.eform.data.model.api.UserApiModel
 import android.app.Application
 import android.content.Context
