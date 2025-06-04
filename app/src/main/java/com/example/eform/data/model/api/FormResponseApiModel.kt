@@ -8,24 +8,25 @@ data class FormResponseApiModel(
     val formId: Int,
     @SerializedName("student_id")
     val studentId: Int,
-    @SerializedName("photo_url") // Sesuai dengan ResponseResource Anda (getPhotoUrlAttribute)
+    @SerializedName("photo_url")
     val photoUrl: String?,
     val latitude: Double?,
     val longitude: Double?,
     @SerializedName("is_location_valid")
-    val isLocationValid: Boolean, // Di Laravel Anda integer, Gson bisa handle
+    val isLocationValid: Boolean,
     @SerializedName("submitted_at")
     val submittedAt: String,
-    val answers: List<AnswerApiModel>?, // ResponseResource Anda menyertakan answers with 'whenLoaded'
-    val student: UserApiModel? // ResponseResource Anda menyertakan student with 'whenLoaded'
+    val answers: List<AnswerApiModel>?,
+    val student: UserApiModel?,
+    val form: FormApiModel? // <-- TAMBAHKAN FIELD INI
 )
 
-// AnswerApiModel untuk di dalam FormResponseApiModel
+// AnswerApiModel tetap sama
 data class AnswerApiModel(
     val id: Int,
     @SerializedName("question_id")
     val questionId: Int,
     @SerializedName("answer_text")
     val answerText: String?,
-    val question: QuestionApiModel? // ResponseResource.answers menyertakan question
+    val question: QuestionApiModel?
 )

@@ -9,7 +9,7 @@ sealed class Screen(val route: String) {
     object Dashboard : Screen("dashboard/{userIdentifier}") // Untuk Guru
     object DashboardStudents : Screen("dashboardstudents/{userIdentifier}") // Untuk Murid
     object CreateForm : Screen("create_form/{userIdentifier}") // Untuk Guru (perlu tahu siapa pembuatnya)
-    object HistoryForm : Screen("history_form") // Pertimbangkan apakah perlu {userIdentifier}
+    object HistoryForm : Screen("history_form/{userIdentifier}") // Pertimbangkan apakah perlu {userIdentifier}
     object FavoriteForms : Screen("favorite_forms/{userIdentifier}") // Untuk Guru dan Murid
     object EditForm : Screen("edit_form/{formId}") // Perlu {formId}, mungkin juga {userIdentifier} jika hanya pemilik yg bisa edit
     object FormAnswer: Screen("form_answer/{formId}/{userIdentifier}") // Untuk Murid (perlu tahu siapa yg mengisi)

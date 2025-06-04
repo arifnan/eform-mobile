@@ -129,4 +129,7 @@ dependencies {
 
     // Compose Reorderable (jika masih digunakan)
     implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
+
+    //gson
+    implementation(libs.converter.gson)
 }

@@ -29,7 +29,7 @@ fun BottomBarNavigation(navController: NavController, userIdentifier: String) {
             BottomBarItem.Home -> DashboardScreen(navController = navController, userIdentifier = userIdentifier)
             BottomBarItem.FavoriteForms -> FavoriteFormsScreen(navController, userIdentifier = userIdentifier) // TODO: Tambahkan userIdentifier jika perlu
             BottomBarItem.Add -> CreateFormScreen(navController,userIdentifier)
-            BottomBarItem.History -> HistoryFormScreen(navController) // TODO: Tambahkan userIdentifier jika perlu
+            BottomBarItem.History -> HistoryFormScreen(navController,userIdentifier) // TODO: Tambahkan userIdentifier jika perlu
             BottomBarItem.Profile -> ProfileScreen(
                 navController = navController,
                 userIdentifier = userIdentifier // Sudah benar menggunakan userIdentifier

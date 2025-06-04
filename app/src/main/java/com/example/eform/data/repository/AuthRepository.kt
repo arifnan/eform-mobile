@@ -5,7 +5,9 @@ import com.example.eform.data.local.UserPreferences
 import com.example.eform.data.model.LoginRequest
 import com.example.eform.data.model.RegisterRequest
 import com.example.eform.data.model.api.AuthResponse
+import com.example.eform.data.model.api.ErrorResponse
 import com.example.eform.data.model.api.UserApiModel
+import com.google.gson.Gson // <-- IMPORT Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
@@ -23,22 +25,43 @@ class AuthRepository(
     private val userPreferences: UserPreferences
 ) {
 
+    // Fungsi helper untuk parsing error body
+    private fun parseErrorResponse(errorBodyString: String?): String {
+        if (errorBodyString == null) return "Terjadi kesalahan yang tidak diketahui."
+        return try {
+            val gson = Gson()
+            val errorResponse = gson.fromJson(errorBodyString, ErrorResponse::class.java)
+            errorResponse.getFirstErrorMessage()
+        } catch (e: Exception) {
+            // Jika parsing gagal, coba kembalikan string error body mentah (sebagai fallback)
+            // atau pesan default yang lebih baik
+            errorBodyString // atau "Gagal memproses pesan error dari server."
+        }
+    }
+
     suspend fun login(loginRequest: LoginRequest): Result<AuthResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val response = apiService.loginUser(loginRequest) // Panggil endpoint login yang benar
+                val response = apiService.loginUser(loginRequest)
                 if (response.isSuccessful && response.body() != null) {
                     response.body()!!.token.let { token ->
                         userPreferences.saveToken(token)
                     }
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Login gagal"
-                    Result.failure(IOException("Login API Error: ${response.code()} - $errorMsg"))
+                    val errorMsgJson = response.errorBody()?.string()
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Gunakan parser
+                    Result.failure(IOException(readableErrorMsg)) // <-- Hanya pesan yang sudah diparsing
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Login HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error during login: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error during login: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e))
+            }
+            catch (e: IOException) {
+                Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e))
+            }
+            catch (e: Exception) {
+                Result.failure(IOException("Terjadi kesalahan: ${e.message}", e))
+            }
         }
     }
 
@@ -46,9 +69,9 @@ class AuthRepository(
         return withContext(Dispatchers.IO) {
             try {
                 val response: Response<AuthResponse> = if (registerRequest.role.equals("teacher", ignoreCase = true)) {
-                    apiService.registerTeacher(registerRequest) // Panggil endpoint register guru
+                    apiService.registerTeacher(registerRequest)
                 } else if (registerRequest.role.equals("student", ignoreCase = true)) {
-                    apiService.registerStudent(registerRequest) // Panggil endpoint register siswa
+                    apiService.registerStudent(registerRequest)
                 } else {
                     return@withContext Result.failure(IllegalArgumentException("Peran pengguna tidak valid untuk registrasi: ${registerRequest.role}"))
                 }
@@ -59,15 +82,23 @@ class AuthRepository(
                     }
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Registrasi gagal"
-                    Result.failure(IOException("Register API Error: ${response.code()} - $errorMsg"))
+                    val errorMsgJson = response.errorBody()?.string()
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Gunakan parser
+                    Result.failure(IOException(readableErrorMsg)) // <-- Hanya pesan yang sudah diparsing
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Register HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error during registration: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error during registration: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e))
+            }
+            catch (e: IOException) {
+                Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e))
+            }
+            catch (e: Exception) {
+                Result.failure(IOException("Terjadi kesalahan: ${e.message}", e))
+            }
         }
     }
 
+    // ... (method logoutUser, getAuthenticatedUser, getAuthToken, updateUserProfile tetap sama)
     suspend fun logout(): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
@@ -88,13 +119,14 @@ class AuthRepository(
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Gagal mendapatkan data pengguna"
+                    val errorMsgJson = response.errorBody()?.string()
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson)
                     if (response.code() == 401) userPreferences.clearToken()
-                    Result.failure(IOException("Get User API Error: ${response.code()} - $errorMsg"))
+                    Result.failure(IOException(readableErrorMsg))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get User HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting user: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting user: ${e.message}", e)) }
+            } catch (e: HttpException) { Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e)) }
+            catch (e: IOException) { Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e)) }
+            catch (e: Exception) { Result.failure(IOException("Terjadi kesalahan: ${e.message}", e)) }
         }
     }
 
@@ -105,14 +137,17 @@ class AuthRepository(
     suspend fun updateUserProfile(
         name: String?,
         address: String?,
-        profilePhotoFile: File?
+        profilePhotoFile: File?,
+        grade: String? = null,
+        subject: String? = null
     ): Result<UserApiModel> {
         return withContext(Dispatchers.IO) {
             try {
                 val nameRb = name?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
                 val addressRb = address?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
-                // Jika menggunakan PUT di ApiService, _method tidak diperlukan di sini
-                // val methodRb = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
+                val gradeRb = grade?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val subjectRb = subject?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
+
 
                 var photoPart: MultipartBody.Part? = null
                 profilePhotoFile?.let {
@@ -123,19 +158,21 @@ class AuthRepository(
                 val response = apiService.updateUserProfile(
                     name = nameRb,
                     address = addressRb,
-                    profilePhoto = photoPart
-                    // method = methodRb // Hanya jika ApiService menggunakan @POST untuk meniru PUT
+                    profilePhoto = photoPart,
+                    grade = gradeRb,
+                    subject = subjectRb
                 )
 
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Gagal memperbarui profil"
-                    Result.failure(IOException("Update Profile API Error: ${response.code()} - $errorMsg"))
+                    val errorMsgJson = response.errorBody()?.string()
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson)
+                    Result.failure(IOException(readableErrorMsg))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Update Profile HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error updating profile: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error updating profile: ${e.message}", e)) }
+            } catch (e: HttpException) { Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e)) }
+            catch (e: IOException) { Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e)) }
+            catch (e: Exception) { Result.failure(IOException("Terjadi kesalahan: ${e.message}", e)) }
         }
     }
 }

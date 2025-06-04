@@ -6,11 +6,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.example.eform.data.api.ApiService // Untuk CreateFormRequestApi dan CreateQuestionPayloadApi
+import com.example.eform.data.api.ApiService
 import com.example.eform.data.api.RetrofitInstance
 import com.example.eform.data.database.AppDatabase
 import com.example.eform.data.model.NotificationEntity
-import com.example.eform.data.model.api.FormApiModel // Impor FormApiModel
+import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.repository.FormRepository
 import com.example.eform.ui.form.components.QuestionInputData
 import com.example.eform.ui.form.components.QuestionType
@@ -25,8 +25,12 @@ import kotlinx.coroutines.withContext
 sealed class CreateFormResultUi {
     object Idle : CreateFormResultUi()
     object Loading : CreateFormResultUi()
-    // Success sekarang membawa FormApiModel, bukan hanya code & link
-    data class Success(val createdForm: FormApiModel, val generatedLink: String, val notificationMessage: String? = null, val requiresSystemNotification: Boolean = false) : CreateFormResultUi()
+    data class Success(
+        val createdForm: FormApiModel,
+        val generatedLink: String,
+        val notificationMessage: String? = null, // Pesan notifikasi internal aplikasi
+        val requiresSystemNotification: Boolean = false // Flag untuk memicu notifikasi sistem
+    ) : CreateFormResultUi()
     data class Error(val message: String) : CreateFormResultUi()
 }
 
@@ -39,90 +43,148 @@ class CreateFormViewModel(application: Application) : AndroidViewModel(applicati
     private val _createFormResult = MutableStateFlow<CreateFormResultUi>(CreateFormResultUi.Idle)
     val createFormResult: StateFlow<CreateFormResultUi> = _createFormResult.asStateFlow()
 
-    private var currentTeacherId: Int? = null
-    private var currentUserIdentifierForNotif: String? = null
     private val _teacherInitialized = MutableStateFlow(false)
+    val teacherInitialized: StateFlow<Boolean> = _teacherInitialized.asStateFlow()
 
-    fun isTeacherInitialized(): Boolean = _teacherInitialized.value && currentTeacherId != null
+    private var currentTeacherId: Int? = null
+    private var userIdentifierForInit: String? = null // Untuk melacak NIP yang digunakan untuk inisialisasi
 
-    fun initializeTeacher(userIdentifier: String) {
-        this.currentUserIdentifierForNotif = userIdentifier
-        viewModelScope.launch {
-            _teacherInitialized.value = false
-            currentTeacherId = withContext(Dispatchers.IO) { userDao.getUserByNip(userIdentifier)?.id }
-            _teacherInitialized.value = true
-            if (currentTeacherId == null) Log.e("CreateFormVM", "Gagal menginisialisasi teacher ID untuk NIP: $userIdentifier.")
-            else Log.d("CreateFormVM", "Teacher ID initialized: $currentTeacherId for NIP: $userIdentifier")
+    fun initializeTeacher(userNip: String) {
+        // Hanya re-inisialisasi jika NIP berbeda atau belum pernah diinisialisasi dengan NIP ini
+        if (currentTeacherId == null || userIdentifierForInit != userNip || !_teacherInitialized.value) {
+            userIdentifierForInit = userNip // Simpan NIP yang sedang diproses
+            viewModelScope.launch {
+                Log.d("CreateFormVM", "Attempting to initialize teacher with NIP: $userNip")
+                _teacherInitialized.value = false // Set false saat mulai proses inisialisasi
+                currentTeacherId = null // Reset teacherId sebelum mencoba mengambil yang baru
+
+                val teacherEntity = withContext(Dispatchers.IO) {
+                    userDao.getUserByNip(userNip)
+                }
+
+                if (teacherEntity != null) {
+                    currentTeacherId = teacherEntity.id
+                    _teacherInitialized.value = true
+                    Log.d("CreateFormVM", "Teacher ID initialized: $currentTeacherId for NIP: $userNip")
+                } else {
+                    _teacherInitialized.value = false // Tetap false jika guru tidak ditemukan
+                    Log.e("CreateFormVM", "Failed to initialize teacher ID for NIP: $userNip. User not found in local DB.")
+                }
+            }
+        } else {
+            Log.d("CreateFormVM", "Teacher already initialized with NIP: $userNip and ID: $currentTeacherId")
+            if(!_teacherInitialized.value && currentTeacherId != null) _teacherInitialized.value = true // Pastikan state konsisten
         }
     }
+
 
     fun createForm(
         title: String,
         description: String?,
         questionsData: List<QuestionInputData>
     ) {
-        val teacherIdForForm = currentTeacherId
-        if (teacherIdForForm == null) {
-            _createFormResult.value = CreateFormResultUi.Error("Identifikasi guru gagal. Harap login kembali.")
+        if (!_teacherInitialized.value || currentTeacherId == null) { // Pengecekan sudah ada
+            _createFormResult.value = CreateFormResultUi.Error("Data guru belum siap atau tidak valid. Harap tunggu atau coba lagi.")
+            Log.w("CreateFormVM", "CreateForm called but teacher not initialized. TeacherID: $currentTeacherId, InitializedState: ${_teacherInitialized.value}")
             return
         }
+        val teacherIdForForm = currentTeacherId!! // Aman karena sudah dicek
 
         viewModelScope.launch {
             _createFormResult.value = CreateFormResultUi.Loading
             if (title.isBlank()) {
                 _createFormResult.value = CreateFormResultUi.Error("Judul formulir tidak boleh kosong"); return@launch
             }
-            if (questionsData.any { it.questionText.isBlank() && (it.questionType != QuestionType.Text || it.options.all { opt -> opt.isBlank() }) }) {
-                _createFormResult.value = CreateFormResultUi.Error("Pastikan semua teks pertanyaan dan opsi (jika ada) telah diisi"); return@launch
+            if (questionsData.isEmpty()) {
+                _createFormResult.value = CreateFormResultUi.Error("Minimal harus ada satu pertanyaan."); return@launch
             }
+            if (questionsData.any { it.questionText.isBlank() }) {
+                _createFormResult.value = CreateFormResultUi.Error("Teks pertanyaan tidak boleh kosong."); return@launch
+            }
+            questionsData.forEach { qd ->
+                if ((qd.questionType == QuestionType.MultipleChoice || qd.questionType == QuestionType.Checkbox) && qd.options.all { it.isBlank() }) {
+                    _createFormResult.value = CreateFormResultUi.Error("Pertanyaan pilihan ganda/checkbox harus memiliki minimal satu opsi yang terisi."); return@launch
+                }
+            }
+
 
             val questionPayloads = questionsData.map { qd ->
                 ApiService.CreateQuestionPayloadApi(
                     questionText = qd.questionText,
                     questionType = qd.questionType.name,
                     options = when (qd.questionType) {
-                        QuestionType.MultipleChoice, QuestionType.Checkbox -> if (qd.options.any { it.isNotBlank() }) qd.options.filter { it.isNotBlank() } else null
+                        QuestionType.MultipleChoice, QuestionType.Checkbox -> qd.options.filter { it.isNotBlank() }.ifEmpty { null }
                         QuestionType.LinearScale -> listOf(qd.minScale.toString(), qd.maxScale.toString(), qd.minLabel, qd.maxLabel)
                         else -> null
                     },
                     required = qd.required
                 )
             }
-            val createFormRequest = ApiService.CreateFormRequestApi(title = title, description = description, questions = questionPayloads)
-            val result = formRepository.createForm(createFormRequest) // Mengembalikan Result<FormApiModel>
+            val createFormRequest = ApiService.CreateFormRequestApi(
+                title = title,
+                description = description?.takeIf { it.isNotBlank() },
+                questions = questionPayloads,
+                teacherId = teacherIdForForm // <-- SERTAKAN teacherId DI SINI
+            )
+
+            Log.d("CreateFormVM", "Sending create form request: $createFormRequest")
+            val result = formRepository.createForm(createFormRequest)
 
             result.fold(
                 onSuccess = { createdFormApiModel ->
+                    Log.d("CreateFormVM", "Form created successfully via API: ${createdFormApiModel.id}, Code: ${createdFormApiModel.formCode}")
                     val formCode = createdFormApiModel.formCode
-                    val formLink = "${Constants.APP_DEEP_LINK_SCHEME}://${Constants.APP_DEEP_LINK_HOST}/$formCode"
-                    var notificationMessageForUi: String? = null
-                    var requiresSystemNotification = false
+                    val formLink = "${Constants.APP_DEEP_LINK_SCHEME}://${Constants.APP_DEEP_LINK_HOST}/${formCode}"
 
-                    val teacherFormsResult = formRepository.getTeacherFormsHistory() // Panggil fungsi riwayat guru
+                    var notificationMessageForUi: String? = null
+                    var requiresSystemNotificationTrigger = false
+
+                    // Cek pencapaian setelah berhasil membuat form
+                    val teacherFormsResult = formRepository.getTeacherFormsHistory() // Ini mengambil semua form guru
                     if(teacherFormsResult.isSuccess){
                         val formCount = teacherFormsResult.getOrNull()?.size ?: 0
-                        if (formCount > 0 && formCount % 10 == 0) {
-                            notificationMessageForUi = "Anda telah membuat total ${formCount} formulir!"
-                            val newNotification = NotificationEntity(userId = teacherIdForForm, title = "Pencapaian Pembuatan Formulir!", message = notificationMessageForUi)
-                            withContext(Dispatchers.IO) { notificationDao.insertNotification(newNotification) } // ID tidak perlu disimpan jika tidak dipakai
-                            val currentNotifCount = withContext(Dispatchers.IO) { notificationDao.getNotificationCountForUser(teacherIdForForm) }
-                            if (currentNotifCount > 8) {
-                                val oldest = withContext(Dispatchers.IO) {notificationDao.getOldestNotificationForUser(teacherIdForForm)}
-                                oldest?.let { withContext(Dispatchers.IO) {notificationDao.deleteNotificationById(it.id)} }
+                        Log.d("CreateFormVM", "Total forms for teacher $teacherIdForForm after creation: $formCount")
+                        if (formCount > 0 && formCount % 10 == 0) { // Notifikasi setiap kelipatan 10
+                            notificationMessageForUi = "Selamat! Anda telah membuat total $formCount formulir!"
+                            val newNotification = NotificationEntity(
+                                userId = teacherIdForForm, // ID guru yang membuat form
+                                title = "Pencapaian Pembuatan Formulir!",
+                                message = notificationMessageForUi
+                            )
+                            withContext(Dispatchers.IO) {
+                                notificationDao.insertNotification(newNotification)
+                                // Batasi jumlah notifikasi lokal jika perlu
+                                val currentNotifCount = notificationDao.getNotificationCountForUser(teacherIdForForm)
+                                if (currentNotifCount > 8) { // Batas misal 8 notifikasi
+                                    val oldest = notificationDao.getOldestNotificationForUser(teacherIdForForm)
+                                    oldest?.let { notificationDao.deleteNotificationById(it.id) }
+                                }
                             }
-                            requiresSystemNotification = true
+                            requiresSystemNotificationTrigger = true
+                            Log.d("CreateFormVM", "Achievement notification triggered for $formCount forms.")
                         }
+                    } else {
+                        Log.w("CreateFormVM", "Failed to get teacher forms history for achievement check.")
                     }
-                    _createFormResult.value = CreateFormResultUi.Success(createdFormApiModel, formLink, notificationMessageForUi, requiresSystemNotification)
+
+                    _createFormResult.value = CreateFormResultUi.Success(
+                        createdFormApiModel,
+                        formLink,
+                        notificationMessageForUi,
+                        requiresSystemNotificationTrigger
+                    )
                 },
                 onFailure = { exception ->
+                    Log.e("CreateFormVM", "Failed to create form via API: ${exception.message}", exception)
                     _createFormResult.value = CreateFormResultUi.Error(exception.message ?: "Gagal membuat formulir")
                 }
             )
         }
     }
 
-    fun resetResult() { _createFormResult.value = CreateFormResultUi.Idle }
+    fun resetResult() {
+        _createFormResult.value = CreateFormResultUi.Idle
+    }
 
     class CreateFormViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -130,7 +192,7 @@ class CreateFormViewModel(application: Application) : AndroidViewModel(applicati
                 @Suppress("UNCHECKED_CAST")
                 return CreateFormViewModel(application) as T
             }
-            throw IllegalArgumentException("Unknown ViewModel class")
+            throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
         }
     }
 }

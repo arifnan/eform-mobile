@@ -1,6 +1,7 @@
 package com.example.eform.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -8,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.eform.data.api.RetrofitInstance
 import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.model.api.FormResponseApiModel
-import com.example.eform.data.model.api.UserApiModel
+// import com.example.eform.data.model.api.UserApiModel // Tidak digunakan secara langsung di sini
 import com.example.eform.data.repository.AuthRepository
 import com.example.eform.data.repository.FormRepository
 import com.example.eform.data.local.UserPreferences
@@ -20,8 +21,8 @@ import kotlinx.coroutines.launch
 sealed class HistoryUiState {
     object Idle : HistoryUiState()
     object Loading : HistoryUiState()
-    data class SuccessForms(val forms: List<FormApiModel>) : HistoryUiState() // Untuk riwayat formulir yang dibuat guru
-    data class SuccessResponses(val responses: List<FormResponseApiModel>) : HistoryUiState() // Untuk riwayat jawaban siswa
+    data class SuccessForms(val forms: List<FormApiModel>) : HistoryUiState()
+    data class SuccessResponses(val responses: List<FormResponseApiModel>) : HistoryUiState()
     data class Error(val message: String) : HistoryUiState()
     object Empty : HistoryUiState()
 }
@@ -35,39 +36,48 @@ class HistoryFormViewModel(application: Application) : AndroidViewModel(applicat
     private val _uiState = MutableStateFlow<HistoryUiState>(HistoryUiState.Idle)
     val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
 
-    // userIdentifier tidak lagi di-pass ke fungsi ini, karena kita akan ambil dari authRepository
     fun loadHistory() {
         viewModelScope.launch {
             _uiState.value = HistoryUiState.Loading
+            Log.d("HistoryVM", "loadHistory called")
 
-            val userResult = authRepository.getAuthenticatedUser() // Dapatkan user yang sedang login
+            val userResult = authRepository.getAuthenticatedUser()
             userResult.fold(
                 onSuccess = { user ->
+                    Log.d("HistoryVM", "Authenticated user for history: ${user.email}, Role: ${user.role}")
                     if (user.role.equals("teacher", ignoreCase = true)) {
-                        // Guru - Ambil riwayat formulir yang telah dibuat (menggunakan endpoint yang sama dengan dashboard guru)
-                        val formsHistoryResult = formRepository.getTeacherFormsHistory() // Ini memanggil getTeacherForms()
+                        val formsHistoryResult = formRepository.getTeacherFormsHistory()
                         formsHistoryResult.fold(
                             onSuccess = { forms ->
+                                Log.d("HistoryVM", "Teacher forms history success, count: ${forms.size}")
                                 if (forms.isEmpty()) _uiState.value = HistoryUiState.Empty
                                 else _uiState.value = HistoryUiState.SuccessForms(forms)
                             },
-                            onFailure = { _uiState.value = HistoryUiState.Error(it.message ?: "Gagal memuat riwayat formulir guru") }
+                            onFailure = { error ->
+                                Log.e("HistoryVM", "Failed to load teacher forms history: ${error.message}")
+                                _uiState.value = HistoryUiState.Error(error.message ?: "Gagal memuat riwayat formulir guru")
+                            }
                         )
                     } else if (user.role.equals("student", ignoreCase = true)) {
-                        // Siswa - Ambil riwayat formulir yang telah diisi
                         val responsesHistoryResult = formRepository.getStudentResponsesHistory()
                         responsesHistoryResult.fold(
                             onSuccess = { responses ->
+                                Log.d("HistoryVM", "Student responses history success, count: ${responses.size}")
                                 if (responses.isEmpty()) _uiState.value = HistoryUiState.Empty
                                 else _uiState.value = HistoryUiState.SuccessResponses(responses)
                             },
-                            onFailure = { _uiState.value = HistoryUiState.Error(it.message ?: "Gagal memuat riwayat pengisian formulir") }
+                            onFailure = { error ->
+                                Log.e("HistoryVM", "Failed to load student responses history: ${error.message}")
+                                _uiState.value = HistoryUiState.Error(error.message ?: "Gagal memuat riwayat pengisian formulir")
+                            }
                         )
                     } else {
+                        Log.w("HistoryVM", "Unknown user role for history: ${user.role}")
                         _uiState.value = HistoryUiState.Error("Peran pengguna tidak dikenal untuk memuat riwayat.")
                     }
                 },
                 onFailure = { exception ->
+                    Log.e("HistoryVM", "Failed to get authenticated user for history: ${exception.message}")
                     _uiState.value = HistoryUiState.Error(exception.message ?: "Gagal mendapatkan data pengguna untuk riwayat.")
                 }
             )

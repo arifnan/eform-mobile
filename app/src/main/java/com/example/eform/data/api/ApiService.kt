@@ -42,7 +42,9 @@ interface ApiService {
     suspend fun updateUserProfile(
         @Part("name") name: RequestBody?,
         @Part("address") address: RequestBody?,
-        @Part profilePhoto: MultipartBody.Part?
+        @Part profilePhoto: MultipartBody.Part?,
+        @Part("grade") grade: RequestBody?,
+        @Part("subject") subject: RequestBody?
         // Jika Laravel Anda mengharapkan _method untuk PUT dengan multipart:
         // @Part("_method") method: RequestBody = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
         // Namun, karena rute di Laravel sudah PUT, _method mungkin tidak diperlukan. Uji ini.
@@ -67,8 +69,11 @@ interface ApiService {
     data class CreateFormRequestApi(
         val title: String,
         val description: String?,
-        val questions: List<CreateQuestionPayloadApi>
+        val questions: List<CreateQuestionPayloadApi>,
+        @SerializedName("teacher_id")
+        val teacherId: Int
     )
+
     @POST("forms") // POST /forms -> FormController@apiStore
     suspend fun createForm(@Body createFormRequest: CreateFormRequestApi): Response<FormApiModel> // FormController@apiStore mengembalikan FormResource
 

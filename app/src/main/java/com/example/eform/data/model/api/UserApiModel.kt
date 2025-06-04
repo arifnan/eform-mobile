@@ -4,8 +4,8 @@ import com.google.gson.annotations.SerializedName
 
 data class UserApiModel(
     val id: Int,
-    val name: String?,
-    val email: String?,
+    val name: String,
+    val email: String,
     val nip: String?,
     val role: String?,
     @SerializedName("email_verified_at")

@@ -1,5 +1,6 @@
 package com.example.eform.ui.dashboard
 
+import android.app.Application
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +23,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination // Import findStartDestination
 import androidx.navigation.compose.rememberNavController
@@ -33,11 +35,19 @@ import com.example.eform.navigation.Screen
 // import com.example.eform.ui.components.BottomBarItem
 import com.example.eform.ui.components.BottomBarItemStudents // Pastikan ini diimpor
 import com.example.eform.ui.components.SimpleBottomNavigationBarStudents
+import com.example.eform.ui.viewmodel.DashboardStudentsViewModel
+import com.example.eform.ui.viewmodel.DashboardViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @Composable
-fun DashboardScreenStudents(navController: NavController, userIdentifier: String) {
+fun DashboardScreenStudents(
+    navController: NavController,
+    userIdentifier: String,
+    dashboardStudentsViewModel: DashboardStudentsViewModel = viewModel(
+    factory = DashboardStudentsViewModel.DashboardStudentsViewModelFactory(LocalContext.current.applicationContext as Application)
+    )
+) {
     var searchQuery by remember { mutableStateOf("") }
     var forms by remember { mutableStateOf(sampleFormsStudents()) }
     var isLoading by remember { mutableStateOf(false) }

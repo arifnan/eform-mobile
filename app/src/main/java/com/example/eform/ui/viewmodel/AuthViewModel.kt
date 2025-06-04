@@ -43,41 +43,44 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     private val _logoutResult = MutableStateFlow<Result<Unit>?>(null)
     val logoutResult: StateFlow<Result<Unit>?> = _logoutResult.asStateFlow()
 
-    // Fungsi untuk menyimpan/memperbarui UserApiModel ke UserEntity di database lokal
     private fun saveOrUpdateUserInLocalDb(userApiModel: UserApiModel) {
-        viewModelScope.launch(Dispatchers.IO) { // Jalankan di IO thread
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val existingUser = userDao.getUserByEmail(userApiModel.email) // Cek apakah user sudah ada berdasarkan email
+                val existingUser = userDao.getUserById(userApiModel.id) // Lebih baik cek by ID jika ID dari API stabil
+
+                val userRoleSafe = userApiModel.role ?: "unknown" // Handle jika role dari API bisa null
+                if (userApiModel.role == null) {
+                    Log.w("AUTH_VM_DB", "UserApiModel.role is null for user: ${userApiModel.email}. Defaulting to '$userRoleSafe'.")
+                }
 
                 val userEntity = UserEntity(
-                    id = existingUser?.id ?: userApiModel.id, // Gunakan ID dari API jika baru, atau ID lokal jika update
-                    // Pastikan UserApiModel.id konsisten atau Anda punya cara lain untuk PK
-                    // Jika API tidak mengembalikan ID yang bisa jadi PK di lokal,
-                    // Anda mungkin perlu membiarkan id = 0 untuk autoGenerate jika user baru.
-                    // Namun, karena Anda menggunakan ID untuk relasi (favorite, notif),
-                    // ID dari API harusnya yang jadi acuan.
-                    name = userApiModel.name,
-                    email = userApiModel.email,
-                    nip = userApiModel.nip ?: "", // NIP bisa null dari API, simpan sebagai string kosong jika perlu
-                    password = "", // Password tidak disimpan ulang dari API response. Dikelola saat registrasi awal.
-                    role = userApiModel.role,
+                    id = userApiModel.id, // ID dari API harusnya jadi PK di lokal
+                    name = userApiModel.name, // Jika name bisa null di API, tambahkan ?: "Nama Default"
+                    email = userApiModel.email, // Jika email bisa null di API, tambahkan ?: "email@default.com"
+                    nip = userApiModel.nip ?: "" , // nip sudah nullable di UserApiModel dan UserEntity
+                    password = existingUser?.password ?: "", // Jaga password lama, atau kosongkan jika register baru
+                    role = userRoleSafe,
                     address = userApiModel.address
+                    // Anda bisa tambahkan subject dan grade di UserEntity jika mau disimpan
+                    // subject = if (userRoleSafe == "teacher") userApiModel.subject else null,
+                    // grade = if (userRoleSafe == "student") userApiModel.grade else null
                 )
 
                 if (existingUser != null) {
-                    userDao.updateUser(userEntity.copy(id = existingUser.id)) // Pastikan ID yang benar digunakan untuk update
-                    Log.d("AUTH_VM_LOCAL_DB", "User updated in local DB: $userEntity")
+                    // Pastikan field password tidak di-overwrite jika tidak ada perubahan password
+                    val finalEntity = if (userEntity.password.isBlank() && existingUser.password.isNotBlank()) {
+                        userEntity.copy(password = existingUser.password)
+                    } else {
+                        userEntity
+                    }
+                    userDao.updateUser(finalEntity)
+                    Log.d("AUTH_VM_DB", "User updated in local DB: $finalEntity")
                 } else {
-                    // Jika API tidak memberikan ID yang bisa jadi PK, dan Anda mengandalkan autoGenerate:
-                    // userDao.insertUser(userEntity.copy(id = 0))
-                    // Tapi karena Anda butuh ID untuk relasi, idealnya ID dari API (jika unik & stabil)
-                    // atau setelah insert, Anda query lagi untuk dapatkan ID lokalnya jika diperlukan segera.
-                    // Untuk kasus ini, kita asumsikan UserApiModel.id adalah PK yang valid.
-                    userDao.insertUser(userEntity) // Jika ID dari API bisa jadi PK
-                    Log.d("AUTH_VM_LOCAL_DB", "New user inserted into local DB: $userEntity")
+                    userDao.insertUser(userEntity)
+                    Log.d("AUTH_VM_DB", "New user inserted into local DB: $userEntity")
                 }
             } catch (e: Exception) {
-                Log.e("AUTH_VM_LOCAL_DB", "Error saving/updating user in local DB: ${e.message}", e)
+                Log.e("AUTH_VM_DB", "Error saving/updating user in local DB: ${e.message}", e)
             }
         }
     }
@@ -88,7 +91,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             val result = authRepository.login(loginRequest)
             result.fold(
                 onSuccess = { authResponse ->
-                    saveOrUpdateUserInLocalDb(authResponse.user) // <-- PANGGIL FUNGSI SIMPAN/UPDATE
+                    saveOrUpdateUserInLocalDb(authResponse.user)
                     _loginResult.value = AuthResult.Success(authResponse)
                 },
                 onFailure = { exception -> _loginResult.value = AuthResult.Error(exception.message ?: "Login gagal") }
@@ -102,7 +105,7 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
             val result = authRepository.register(registerRequest)
             result.fold(
                 onSuccess = { authResponse ->
-                    saveOrUpdateUserInLocalDb(authResponse.user) // <-- PANGGIL FUNGSI SIMPAN/UPDATE
+                    saveOrUpdateUserInLocalDb(authResponse.user)
                     _registerResult.value = AuthResult.Success(authResponse)
                 },
                 onFailure = { exception -> _registerResult.value = AuthResult.Error(exception.message ?: "Registrasi gagal") }
@@ -112,9 +115,8 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
 
     fun logout() {
         viewModelScope.launch {
-            // Hasil logout bisa diabaikan jika hanya ingin clear token
             authRepository.logout()
-            _logoutResult.value = Result.success(Unit) // Tandai logout selesai
+            _logoutResult.value = Result.success(Unit)
         }
     }
 

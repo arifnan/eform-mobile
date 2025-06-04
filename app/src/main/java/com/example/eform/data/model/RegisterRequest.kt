@@ -7,6 +7,7 @@ data class RegisterRequest(
     val password: String,
     val password_confirmation: String,
     val role: String, // Tambahkan role
-    val gender: Boolean?, // <<< TAMBAHKAN INI
+    val gender: Boolean?,
+    val grade: String?,// <<< TAMBAHKAN INI
     val subject: String?  // <<< TAMBAHKAN INI (Mungkin hanya untuk guru?)
  )
