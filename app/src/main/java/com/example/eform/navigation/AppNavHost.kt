@@ -30,6 +30,8 @@ import com.example.eform.ui.dashboard.DashboardScreenStudents
 import com.example.eform.ui.form.*
 import com.example.eform.ui.notification.NotificationScreen
 import com.example.eform.ui.profile.ProfileScreen
+import com.example.eform.ui.response.FormResponseDetailScreen
+import com.example.eform.ui.response.ResponseListScreen
 import com.example.eform.ui.splash.SplashScreen
 import com.example.eform.ui.viewmodel.*
 
@@ -224,7 +226,7 @@ fun AppNavHost(
             if (formId == 0) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ID Formulir tidak valid.") }
             } else {
-                PreviewFormScreen(formId = formId) // PreviewFormViewModel jika diperlukan
+                PreviewFormScreen(navController = navController,formId = formId) // PreviewFormViewModel jika diperlukan
             }
         }
 
@@ -261,5 +263,34 @@ fun AppNavHost(
                 Text("Halaman Edit Form untuk ID: $formId (Belum diimplementasikan)")
             }
         }
+
+        composable(
+            route = Screen.ResponseList.route,
+            arguments = listOf(
+                navArgument("formId") { type = NavType.IntType },
+                navArgument("formTitle") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val formId = backStackEntry.arguments?.getInt("formId") ?: 0
+            val formTitle = backStackEntry.arguments?.getString("formTitle") ?: "Respons"
+            ResponseListScreen(
+                navController = navController,
+                formId = formId,
+                formTitle = formTitle
+            )
+        }
+
+        // Rute BARU untuk menampilkan detail satu respons
+        composable(
+            route = Screen.FormResponseDetail.route,
+            arguments = listOf(navArgument("responseId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            val responseId = backStackEntry.arguments?.getInt("responseId") ?: 0
+            FormResponseDetailScreen(
+                navController = navController,
+                responseId = responseId
+            )
+        }
+
     }
 }

@@ -12,7 +12,7 @@ import com.example.eform.data.model.QuestionEntity
 @Dao
 interface FormDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertForm(form: FormEntity): Long
+    suspend fun insertForm(forms: List<FormEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertQuestions(questions: List<QuestionEntity>)

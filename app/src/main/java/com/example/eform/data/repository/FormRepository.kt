@@ -24,9 +24,13 @@ class FormRepository(private val apiService: ApiService) {
                 } else {
                     Result.failure(IOException("Get Forms API Error: ${response.code()} - ${response.message()}"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Forms HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting forms: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting forms: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(IOException("Get Forms HTTP Error: ${e.code()} - ${e.message()}", e))
+            } catch (e: IOException) {
+                Result.failure(IOException("Network error getting forms: ${e.message}", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("Unknown error getting forms: ${e.message}", e))
+            }
         }
     }
 
@@ -37,12 +41,22 @@ class FormRepository(private val apiService: ApiService) {
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Create Form failed"
+                    val errorMsg =
+                        response.errorBody()?.string() ?: response.message() ?: "Create Form failed"
                     Result.failure(IOException("Create Form API Error: ${response.code()} - $errorMsg"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Create Form HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error creating form: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error creating form: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Create Form HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(IOException("Network error creating form: ${e.message}", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("Unknown error creating form: ${e.message}", e))
+            }
         }
     }
 
@@ -55,9 +69,18 @@ class FormRepository(private val apiService: ApiService) {
                 } else {
                     Result.failure(IOException("Get Form Details API Error: ${response.code()} - ${response.message()}"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Form Details HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting form details: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting form details: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Get Form Details HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(IOException("Network error getting form details: ${e.message}", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("Unknown error getting form details: ${e.message}", e))
+            }
         }
     }
 
@@ -71,10 +94,13 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val formIdRb = formId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-                val answersJson = Gson().toJson(answers) // Konversi List<AnswerPayload> ke JSON String
+                val answersJson =
+                    Gson().toJson(answers) // Konversi List<AnswerPayload> ke JSON String
                 val answersRb = answersJson.toRequestBody("application/json".toMediaTypeOrNull())
-                val latitudeRb = latitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val longitudeRb = longitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val latitudeRb =
+                    latitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val longitudeRb =
+                    longitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
                 var photoPart: MultipartBody.Part? = null
                 photoFile?.let {
                     val photoFileRb = it.asRequestBody("image/*".toMediaTypeOrNull())
@@ -82,31 +108,48 @@ class FormRepository(private val apiService: ApiService) {
                     photoPart = MultipartBody.Part.createFormData("photo", it.name, photoFileRb)
                 }
 
-                val response = apiService.submitFormResponse(formIdRb, latitudeRb, longitudeRb, answersRb, photoPart)
+                val response = apiService.submitFormResponse(
+                    formIdRb,
+                    latitudeRb,
+                    longitudeRb,
+                    answersRb,
+                    photoPart
+                )
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Submit Response failed"
+                    val errorMsg = response.errorBody()?.string() ?: response.message()
+                    ?: "Submit Response failed"
                     Result.failure(IOException("Submit Response API Error: ${response.code()} - $errorMsg"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Submit Response HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error submitting response: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error submitting response: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Submit Response HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(IOException("Network error submitting response: ${e.message}", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("Unknown error submitting response: ${e.message}", e))
+            }
         }
     }
 
-    suspend fun getResponsesForForm(formId: Int): Result<List<FormResponseApiModel>> {
+     suspend fun getResponsesForForm(formId: Int): Result<List<FormResponseApiModel>> {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getResponsesForForm(formId)
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    Result.failure(IOException("Get Responses API Error: ${response.code()} - ${response.message()}"))
+                    val errorMsg = response.errorBody()?.string() ?: "Gagal mengambil daftar respons"
+                    Result.failure(IOException("API Error: ${response.code()} - $errorMsg"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Responses HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting responses: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting responses: ${e.message}", e)) }
+            } catch (e: Exception) {
+                Result.failure(IOException("Network error: ${e.message}", e))
+            }
         }
     }
 
@@ -117,12 +160,22 @@ class FormRepository(private val apiService: ApiService) {
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Formulir dengan kode '$formCode' tidak ditemukan"
+                    val errorMsg = response.errorBody()?.string() ?: response.message()
+                    ?: "Formulir dengan kode '$formCode' tidak ditemukan"
                     Result.failure(IOException("Get Form By Code API Error: ${response.code()} - $errorMsg"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Form By Code HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting form by code: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting form by code: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Get Form By Code HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(IOException("Network error getting form by code: ${e.message}", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("Unknown error getting form by code: ${e.message}", e))
+            }
         }
     }
 
@@ -135,9 +188,28 @@ class FormRepository(private val apiService: ApiService) {
                 } else {
                     Result.failure(IOException("Get Teacher History API Error: ${response.code()} - ${response.message()}"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Teacher History HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting teacher history: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting teacher history: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Get Teacher History HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    IOException(
+                        "Network error getting teacher history: ${e.message}",
+                        e
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(
+                    IOException(
+                        "Unknown error getting teacher history: ${e.message}",
+                        e
+                    )
+                )
+            }
         }
     }
 
@@ -150,9 +222,48 @@ class FormRepository(private val apiService: ApiService) {
                 } else {
                     Result.failure(IOException("Get Student History API Error: ${response.code()} - ${response.message()}"))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Get Student History HTTP Error: ${e.code()} - ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Network error getting student history: ${e.message}", e)) }
-            catch (e: Exception) { Result.failure(IOException("Unknown error getting student history: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(
+                    IOException(
+                        "Get Student History HTTP Error: ${e.code()} - ${e.message()}",
+                        e
+                    )
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    IOException(
+                        "Network error getting student history: ${e.message}",
+                        e
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(
+                    IOException(
+                        "Unknown error getting student history: ${e.message}",
+                        e
+                    )
+                )
+            }
         }
     }
+
+    suspend fun getResponseDetail(responseId: Int): Result<FormResponseApiModel> {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Anda perlu menambahkan endpoint ini di ApiService.kt
+                val response = apiService.getResponseDetail(responseId)
+                if (response.isSuccessful && response.body() != null) {
+                    Result.success(response.body()!!)
+                } else {
+                    val errorMsg =
+                        response.errorBody()?.string() ?: "Gagal mengambil detail respons"
+                    Result.failure(IOException("API Error: ${response.code()} - $errorMsg"))
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException("Network error or exception: ${e.message}", e))
+            }
+        }
+    }
+
+
 }

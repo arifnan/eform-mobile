@@ -1,12 +1,14 @@
 package com.example.eform.ui.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.eform.data.api.RetrofitInstance
 import com.example.eform.data.database.AppDatabase
+import com.example.eform.data.model.FormEntity
 import com.example.eform.data.model.UserFavoriteFormEntity
 import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.repository.FormRepository
@@ -48,10 +50,11 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private var currentUserId: Int? = null
     private var currentUserIdentifier: String? = null
     private var currentSortOrder: String = "asc" // Default sort order
+    private val formDao = AppDatabase.getDatabase(application).formDao()
 
     // Fungsi untuk memuat data dashboard guru
+
     fun loadTeacherDashboard(userIdentifier: String, sortOrder: String) {
-        // Hindari reload jika user dan sort order sama, dan data sudah sukses dimuat
         if (this.currentUserIdentifier == userIdentifier &&
             this.currentSortOrder == sortOrder &&
             _formsResult.value is DashboardFormsResult.Success) {
@@ -62,7 +65,8 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             _formsResult.value = DashboardFormsResult.Loading
-            // 1. Dapatkan userId dari userIdentifier (NIP guru)
+
+            // 1. Dapatkan info user
             val userEntity = withContext(Dispatchers.IO) { userDao.getUserByNip(userIdentifier) }
             if (userEntity == null) {
                 _formsResult.value = DashboardFormsResult.Error("Data guru tidak ditemukan untuk NIP: $userIdentifier")
@@ -71,19 +75,35 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             currentUserId = userEntity.id
             _userName.value = userEntity.name
 
-            // 2. Ambil semua formulir dari API (sesuai API Laravel, ini akan jadi form milik guru yang login)
+            // 2. Ambil semua formulir dari API
             val formsApiResult = formRepository.getTeacherForms()
 
             formsApiResult.fold(
                 onSuccess = { apiForms ->
-                    // 3. Ambil daftar ID formulir favorit untuk guru ini dari database lokal
+                    // 3. SINKRONISASI KE DATABASE LOKAL (ROOM)
+                    withContext(Dispatchers.IO) {
+                        val formEntities = apiForms.map { apiForm ->
+                            FormEntity(
+                                id = apiForm.id,
+                                title = apiForm.title,
+                                description = apiForm.description ?: "",
+                                createdAt = System.currentTimeMillis(), // Atau parse dari apiForm.createdAt jika perlu
+                                formCode = apiForm.formCode
+                            )
+                        }
+                        // Menggunakan insertForm yang akan me-replace jika sudah ada (OnConflictStrategy.REPLACE)
+                        formDao.insertForm(formEntities)
+                        Log.d("DashboardVM", "${formEntities.size} form entities saved to local DB.")
+                    }
+
+                    // 4. Ambil daftar ID favorit lokal setelah sinkronisasi
                     val favoriteFormIds = currentUserId?.let { userId ->
                         withContext(Dispatchers.IO) {
                             userFavoriteFormDao.getFavoriteFormIdsByUserId(userId).toSet()
                         }
                     } ?: emptySet()
 
-                    // 4. Gabungkan data dan lakukan sorting
+                    // 5. Gabungkan data dan lakukan sorting
                     var displayList = apiForms.map { apiForm ->
                         FormDisplayItem(
                             formApiData = apiForm,
@@ -104,20 +124,18 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    // Fungsi untuk mengubah status favorit sebuah formulir
+    // Fungsi toggleFavoriteStatus sudah benar, karena sekarang data form sudah ada di lokal
     fun toggleFavoriteStatus(formId: Int, newStatus: Boolean) {
-        val userId = currentUserId ?: return // Perlu userId guru yang aktif
+        val userId = currentUserId ?: return
 
-        viewModelScope.launch(Dispatchers.IO) { // Operasi database di IO thread
+        viewModelScope.launch(Dispatchers.IO) {
             if (newStatus) {
                 userFavoriteFormDao.addFavorite(UserFavoriteFormEntity(userId, formId))
             } else {
                 userFavoriteFormDao.removeFavorite(UserFavoriteFormEntity(userId, formId))
             }
 
-            // Perbarui UI dengan memodifikasi list yang ada atau memuat ulang
-            // Cara sederhana: Panggil lagi fetch, tapi ini akan reload semua.
-            // Cara lebih baik: Update item spesifik di _formsResult.value
+            // Update UI
             val currentUiState = _formsResult.value
             if (currentUiState is DashboardFormsResult.Success) {
                 val updatedList = currentUiState.forms.map {
@@ -127,16 +145,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                         it
                     }
                 }
-                // Pastikan sorting tetap terjaga jika diperlukan
-                val sortedUpdatedList = if (currentSortOrder == "asc") {
-                    updatedList.sortedBy { it.formApiData.title.lowercase() }
-                } else {
-                    updatedList.sortedByDescending { it.formApiData.title.lowercase() }
+                withContext(Dispatchers.Main) {
+                    _formsResult.value = DashboardFormsResult.Success(updatedList)
                 }
-                _formsResult.value = DashboardFormsResult.Success(sortedUpdatedList)
             }
-            // Jika ingin reload semua (lebih sederhana tapi kurang efisien):
-            // currentUserIdentifier?.let { loadTeacherDashboard(it, currentSortOrder) }
         }
     }
 

@@ -13,12 +13,12 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-@OptIn(ExperimentalMaterial3Api::class) // Untuk TextFieldDefaults.colors
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QuestionInput(
     questionData: QuestionInputData,
     onDelete: () -> Unit,
-    questionNumber: Int // Tambahkan nomor pertanyaan
+    questionNumber: Int
 ) {
     var questionText by remember { mutableStateOf(questionData.questionText) }
     var questionType by remember { mutableStateOf(questionData.questionType) }
@@ -30,11 +30,10 @@ fun QuestionInput(
     var minLabel by remember { mutableStateOf(questionData.minLabel) }
     var maxLabel by remember { mutableStateOf(questionData.maxLabel) }
 
-    // Sync kembali ke model ketika state internal berubah
     LaunchedEffect(questionText, questionType, options, required, minScale, maxScale, minLabel, maxLabel) {
         questionData.questionText = questionText
         questionData.questionType = questionType
-        questionData.options = options.filter { it.isNotBlank() }.toMutableList() // Simpan opsi yang tidak kosong saja
+        questionData.options = options.filter { it.isNotBlank() }.toMutableList()
         questionData.required = required
         questionData.minScale = minScale
         questionData.maxScale = maxScale
@@ -42,19 +41,19 @@ fun QuestionInput(
         questionData.maxLabel = maxLabel
     }
 
-    Card( // Bungkus semua elemen pertanyaan dalam Card
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp), // Beri jarak antar Card pertanyaan
+            .padding(vertical = 8.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface) // Warna background card yang lembut
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(
             modifier = Modifier
-                .padding(16.dp) // Padding di dalam Card
+                .padding(16.dp)
         ) {
             Text(
-                text = "Pertanyaan ${questionNumber + 1}", // Tampilkan nomor pertanyaan
+                text = "Pertanyaan ${questionNumber + 1}",
                 style = MaterialTheme.typography.titleSmall,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
@@ -74,11 +73,10 @@ fun QuestionInput(
                     selectedType = questionType,
                     onTypeSelected = { newType ->
                         questionType = newType
-                        // Reset options jika tipe berubah dari atau ke tipe yang tidak menggunakan options
                         if (newType != QuestionType.MultipleChoice && newType != QuestionType.Checkbox) {
                             options = mutableListOf()
                             questionData.options = mutableListOf()
-                        } else if (options.isEmpty()) { // Jika berubah ke tipe dengan opsi dan opsi kosong, tambahkan satu default
+                        } else if (options.isEmpty()) {
                             options = mutableListOf("")
                             questionData.options = mutableListOf("")
                         }
@@ -88,19 +86,18 @@ fun QuestionInput(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Opsi jawaban berdasarkan tipe pertanyaan
             when (questionType) {
                 QuestionType.MultipleChoice, QuestionType.Checkbox -> {
                     Column {
                         options.forEachIndexed { index, option ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(vertical = 2.dp) // Kurangi padding vertikal
+                                modifier = Modifier.padding(vertical = 2.dp)
                             ) {
                                 if (questionType == QuestionType.MultipleChoice) {
-                                    RadioButton(selected = false, onClick = null, enabled = false) // Hanya visual saat pembuatan
+                                    RadioButton(selected = false, onClick = null, enabled = false)
                                 } else {
-                                    Checkbox(checked = false, onCheckedChange = null, enabled = false) // Hanya visual saat pembuatan
+                                    Checkbox(checked = false, onCheckedChange = null, enabled = false)
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 TextField(
@@ -112,7 +109,7 @@ fun QuestionInput(
                                     },
                                     placeholder = { Text("Opsi ${index + 1}") },
                                     modifier = Modifier.weight(1f),
-                                    colors = TextFieldDefaults.colors( // Gunakan TextFieldDefaults.colors
+                                    colors = TextFieldDefaults.colors(
                                         focusedContainerColor = Color.Transparent,
                                         unfocusedContainerColor = Color.Transparent,
                                         disabledContainerColor = Color.Transparent,
@@ -122,7 +119,7 @@ fun QuestionInput(
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
                                 )
-                                if (options.size > 1) { // Tombol hapus opsi hanya jika lebih dari 1 opsi
+                                if (options.size > 1) {
                                     IconButton(onClick = {
                                         val updatedOptions = options.toMutableList()
                                         updatedOptions.removeAt(index)
@@ -150,13 +147,13 @@ fun QuestionInput(
                             Text("Skala dari ")
                             DropdownSelector(
                                 value = minScale,
-                                range = 0..1, // Skala Linier umumnya mulai dari 0 atau 1
+                                range = 0..1,
                                 onValueChange = { minScale = it }
                             )
                             Text(" sampai ")
                             DropdownSelector(
                                 value = maxScale,
-                                range = 2..10, // Maksimal skala umum
+                                range = 2..10,
                                 onValueChange = { maxScale = it }
                             )
                         }
@@ -180,10 +177,23 @@ fun QuestionInput(
                     }
                 }
                 QuestionType.Text -> {
-                    // Tidak ada input tambahan untuk tipe Text di sini, hanya pertanyaan
-                    // Mungkin placeholder untuk jawaban singkat atau panjang
                     Text(
-                        "Responden akan menjawab dalam format teks.",
+                        "Responden akan menjawab dalam format teks bebas.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                // Menambahkan case untuk TrueFalse dan FileUpload
+                QuestionType.TrueFalse -> {
+                    Text(
+                        "Responden akan memilih antara Benar atau Salah.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+                QuestionType.FileUpload -> {
+                    Text(
+                        "Responden akan diminta untuk mengunggah file.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
@@ -192,10 +202,9 @@ fun QuestionInput(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Pengaturan pertanyaan (wajib diisi, hapus)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End, // Pindahkan ke kanan
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -206,7 +215,7 @@ fun QuestionInput(
                         onCheckedChange = { required = it }
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f)) // Dorong tombol hapus ke ujung
+                Spacer(modifier = Modifier.weight(1f))
                 IconButton(onClick = onDelete) {
                     Icon(imageVector = Icons.Default.Delete, contentDescription = "Hapus Pertanyaan", tint = MaterialTheme.colorScheme.error)
                 }
@@ -226,14 +235,13 @@ fun DropdownMenuQuestionType(
     Box {
         OutlinedButton(onClick = { expanded = true }) {
             Text(selectedType.label)
-            // Icon(Icons.Default.ArrowDropDown, contentDescription = "Pilih tipe pertanyaan")
         }
 
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            QuestionType.values().forEach { type ->
+            QuestionType.entries.forEach { type -> // Menggunakan .entries untuk enum modern
                 DropdownMenuItem(
                     text = { Text(type.label) },
                     onClick = {

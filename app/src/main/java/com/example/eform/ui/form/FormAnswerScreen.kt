@@ -327,8 +327,8 @@ fun QuestionDisplayItem(
     currentAnswer: String,
     onAnswerChange: (String) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) { // Beri padding bawah antar pertanyaan
-        Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(1.dp)){ // Bungkus pertanyaan dalam Card
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(1.dp)){
             Column(Modifier.padding(12.dp)){
                 Row(verticalAlignment = Alignment.Top) {
                     Text(
@@ -436,6 +436,77 @@ fun QuestionDisplayItem(
                             Text(
                                 text = "Pilihan Anda: ${currentAnswer.ifEmpty { "-" }}",
                                 style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    // Menambahkan case untuk TrueFalse dan FileUpload
+                    QuestionType.TrueFalse -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.Start // Atau SpaceEvenly
+                        ) {
+                            val optionTrue = "Benar"
+                            val optionFalse = "Salah"
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { onAnswerChange(optionTrue) }
+                                    .padding(end = 16.dp, top = 4.dp, bottom = 4.dp)
+                            ) {
+                                RadioButton(
+                                    selected = (currentAnswer == optionTrue),
+                                    onClick = { onAnswerChange(optionTrue) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(optionTrue)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { onAnswerChange(optionFalse) }
+                                    .padding(top = 4.dp, bottom = 4.dp)
+                            ) {
+                                RadioButton(
+                                    selected = (currentAnswer == optionFalse),
+                                    onClick = { onAnswerChange(optionFalse) }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(optionFalse)
+                            }
+                        }
+                    }
+                    QuestionType.FileUpload -> {
+                        // Untuk FileUpload, kita bisa tampilkan nama file jika sudah dipilih,
+                        // atau tombol untuk memilih file.
+                        // Implementasi pemilihan file sebenarnya memerlukan ActivityResultLauncher.
+                        // Di sini kita buat placeholder UI.
+                        val context = LocalContext.current
+                        var fileName by remember(currentAnswer) { mutableStateOf(if (currentAnswer.isNotBlank()) Uri.parse(currentAnswer).lastPathSegment else "Belum ada file dipilih") }
+
+                        // Launcher untuk memilih file (contoh untuk semua jenis file)
+                        val filePickerLauncher = rememberLauncherForActivityResult(
+                            contract = ActivityResultContracts.GetContent()
+                        ) { uri: Uri? ->
+                            if (uri != null) {
+                                onAnswerChange(uri.toString()) // Simpan URI sebagai string
+                                fileName = uri.lastPathSegment ?: "File dipilih"
+                                Toast.makeText(context, "File dipilih: ${uri.lastPathSegment}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+
+                        Column {
+                            Text("File: $fileName", style = MaterialTheme.typography.bodyMedium)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(onClick = {
+                                filePickerLauncher.launch("*/*") // Membuka pemilih file
+                            }) {
+                                Text(if (currentAnswer.isNotBlank()) "Ganti File" else "Pilih File")
+                            }
+                            Text(
+                                "Catatan: Bukti foto utama diunggah terpisah di bawah.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.Gray
                             )
                         }
                     }

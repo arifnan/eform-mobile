@@ -19,6 +19,9 @@ sealed class Screen(val route: String) {
     object LoginStudents : Screen("loginstudents") // Untuk Murid
     object RegisterStudents : Screen("registerstudents") // Untuk Murid
     object PreviewForm : Screen("preview_form/{formId}")
+    object ResponseList : Screen("response_list/{formId}/{formTitle}") // Untuk daftar respons
+    object FormResponseDetail : Screen("form_response_detail/{responseId}") // Untuk detail respons
+
 }
 
 

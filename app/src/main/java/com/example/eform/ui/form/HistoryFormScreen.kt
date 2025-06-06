@@ -105,11 +105,10 @@ fun HistoryFormScreen(
                                     description = "Jawaban Anda",
                                     date = "Diisi: ${formatApiDateTime(response.submittedAt)}",
                                     onClick = {
-                                        response.form?.id?.let { formId ->
-                                            navController.navigate(
-                                                Screen.PreviewForm.route.replace("{formId}", "$formId")
-                                            )
-                                        }
+                                        // Navigasi ke layar detail dengan mengirim ID respons
+                                        navController.navigate(
+                                            Screen.FormResponseDetail.route.replace("{responseId}", "${response.id}")
+                                        )
                                     }
                                 )
                             }

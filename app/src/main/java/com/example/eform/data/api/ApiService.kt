@@ -74,6 +74,8 @@ interface ApiService {
         val teacherId: Int
     )
 
+
+
     @POST("forms") // POST /forms -> FormController@apiStore
     suspend fun createForm(@Body createFormRequest: CreateFormRequestApi): Response<FormApiModel> // FormController@apiStore mengembalikan FormResource
 
@@ -104,9 +106,15 @@ interface ApiService {
         @Part photo: MultipartBody.Part?
     ): Response<FormResponseApiModel>
 
+
+
+
     // Rute dari ResponseController@indexByForm: GET /forms/{form}/responses
     @GET("forms/{form_id}/responses")
     suspend fun getResponsesForForm(@Path("form_id") formId: Int): Response<List<FormResponseApiModel>>
+
+    @GET("responses/{id}")
+    suspend fun getResponseDetail(@Path("id") responseId: Int): Response<FormResponseApiModel>
 
     // ================= HISTORY =================
     // Rute dari TeacherController.php
@@ -116,5 +124,6 @@ interface ApiService {
     // Rute dari StudentController.php
     @GET("student/responses/history") // GET /student/responses/history -> apiGetResponseHistory
     suspend fun getStudentSubmittedResponsesHistory(): Response<List<FormResponseApiModel>>
+
 
 }
