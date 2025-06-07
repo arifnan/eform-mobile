@@ -191,13 +191,6 @@ fun QuestionInput(
                         color = Color.Gray
                     )
                 }
-                QuestionType.file_upload -> {
-                    Text(
-                        "Responden akan diminta untuk mengunggah file.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(12.dp))

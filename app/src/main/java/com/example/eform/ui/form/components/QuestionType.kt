@@ -5,8 +5,7 @@ enum class QuestionType(val label: String) {
     MultipleChoice("Pilihan Ganda"),
     Checkbox("Kotak Centang"), // Atau "Checkbox" jika lebih disukai
     LinearScale("Skala Linier"),
-    true_false("Benar/Salah"),   // Ditambahkan
-    file_upload("Unggah File");  // Ditambahkan
+    true_false("Benar/Salah");   // Ditambahkan
 
     companion object {
         // Helper untuk konversi dari String ke Enum, berguna saat parsing data dari API

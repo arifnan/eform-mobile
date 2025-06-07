@@ -16,11 +16,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
-import com.example.eform.data.model.LoginRequest // Pastikan ini diimpor
+import com.example.eform.data.model.LoginRequest
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.theme.EformTheme
 import com.example.eform.ui.viewmodel.AuthResult
 import com.example.eform.ui.viewmodel.AuthViewModel
+import kotlinx.coroutines.delay
 
 @Composable
 fun LoginStudentsScreen(
@@ -37,19 +38,24 @@ fun LoginStudentsScreen(
     val loginResult by authViewModel.loginResult.collectAsState()
     val isLoading = loginResult is AuthResult.Loading
 
+    // This LaunchedEffect will now handle the delay
     LaunchedEffect(loginResult) {
         when (val result = loginResult) {
             is AuthResult.Success -> {
                 if (result.authResponse.user.role.equals("student", ignoreCase = true)) {
-                    Toast.makeText(context, "Login Siswa Berhasil! Selamat datang ${result.authResponse.user.name}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Login Berhasil!", Toast.LENGTH_SHORT).show()
                     val userIdentifier = result.authResponse.user.email
-                    onLoginSuccess(userIdentifier) // Callback ke MainActivity
+                    onLoginSuccess(userIdentifier)
+
+                    // Delay for 1 second after login is successful
+                    delay(100)
+
                     navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
                         popUpTo(Screen.LoginStudents.route) { inclusive = true }
                     }
                 } else {
                     Toast.makeText(context, "Akun ini bukan akun siswa. Silakan login sebagai guru.", Toast.LENGTH_LONG).show()
-                    authViewModel.logout() // Logout jika peran salah
+                    authViewModel.logout()
                 }
                 authViewModel.resetLoginResult()
             }
@@ -57,7 +63,7 @@ fun LoginStudentsScreen(
                 Toast.makeText(context, "Login Gagal: ${result.message}", Toast.LENGTH_LONG).show()
                 authViewModel.resetLoginResult()
             }
-            else -> { /* Idle atau Loading */ }
+            else -> { /* Idle or Loading */ }
         }
     }
 
@@ -84,7 +90,7 @@ fun LoginStudentsScreen(
                         LoginRequest(
                             email = email,
                             password = password,
-                            role = "student" // <-- KIRIM ROLE "student"
+                            role = "student"
                         )
                     )
                 } else {
@@ -108,7 +114,7 @@ fun LoginStudentsScreen(
         }
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = {
-            if (!isLoading) {
+            if(!isLoading) {
                 navController.navigate(Screen.Role.route){
                     popUpTo(Screen.LoginStudents.route){ inclusive = true}
                 }

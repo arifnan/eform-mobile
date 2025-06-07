@@ -28,7 +28,7 @@ import com.example.eform.ui.viewmodel.PreviewFormViewModel
 import com.example.eform.ui.viewmodel.PreviewUiState
 import com.example.eform.utils.Constants // Import Constants untuk deep link
 
-// Signature fungsi diubah untuk menerima NavController
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PreviewFormScreen(
@@ -40,7 +40,6 @@ fun PreviewFormScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    // Memuat data saat composable pertama kali ditampilkan
     LaunchedEffect(formId) {
         viewModel.loadFormDetails(formId)
     }
@@ -73,9 +72,8 @@ fun PreviewFormScreen(
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp) // Memberi jarak antar item
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        // Card untuk Detail Formulir (Judul & Deskripsi)
                         item {
                             Card(modifier = Modifier.fillMaxWidth(), elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)) {
                                 Column(modifier = Modifier.padding(16.dp)) {
@@ -88,16 +86,12 @@ fun PreviewFormScreen(
                             }
                         }
 
-                        // ==========================================================
-                        // === BAGIAN YANG DITAMBAHKAN ===
-                        // ==========================================================
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    // Baris untuk Kode Formulir
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text("Kode Formulir:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -111,10 +105,7 @@ fun PreviewFormScreen(
                                             Icon(Icons.Default.ContentCopy, "Salin Kode")
                                         }
                                     }
-
                                     Divider()
-
-                                    // Baris untuk Link Akses
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text("Link Akses:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -131,30 +122,25 @@ fun PreviewFormScreen(
                                 }
                             }
                         }
-                        // ==========================================================
-                        // === AKHIR BAGIAN YANG DITAMBAHKAN ===
-                        // ==========================================================
 
-                        // Tombol Lihat Jawaban Siswa
+                        // ========== PERUBAHAN UTAMA DI SINI ==========
                         item {
                             Button(
                                 onClick = {
-                                    // Anda perlu memastikan rute `Screen.ResponseList` sudah ada di file Screen.kt Anda
-                                    // dan sudah di-handle di AppNavHost.kt
-                                    // navController.navigate(
-                                    //     Screen.ResponseList.route
-                                    //         .replace("{formId}", "$formId")
-                                    //         .replace("{formTitle}", form.title)
-                                    // )
-                                    Toast.makeText(context, "Navigasi ke Daftar Jawaban", Toast.LENGTH_SHORT).show()
+                                    // Ganti Toast dengan navigasi ke ResponseListScreen
+                                    navController.navigate(
+                                        Screen.ResponseList.route
+                                            .replace("{formId}", "$formId")
+                                            .replace("{formTitle}", form.title)
+                                    )
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text("Lihat Jawaban Siswa")
                             }
                         }
+                        // =============================================
 
-                        // Header untuk daftar pertanyaan
                         item {
                             Text(
                                 "Daftar Pertanyaan",

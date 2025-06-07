@@ -26,7 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 import com.example.eform.data.model.api.AnswerApiModel
 import com.example.eform.ui.components.StandardTopAppBar
 import com.example.eform.ui.form.formatApiDateTime // Pastikan fungsi ini bisa diakses
@@ -89,12 +91,15 @@ fun FormResponseDetailScreen(
 
                         Divider(modifier = Modifier.padding(vertical = 16.dp))
 
-                        // Foto Bukti
                         Text("Foto Bukti Pengisian:", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
                         if (!response.photoUrl.isNullOrEmpty()) {
-                            Image(
-                                painter = rememberAsyncImagePainter(model = response.photoUrl),
+                            // Menggunakan AsyncImage untuk kontrol lebih baik (placeholder, error)
+                            AsyncImage(
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(response.photoUrl)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = "Foto Bukti Pengisian",
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -104,7 +109,14 @@ fun FormResponseDetailScreen(
                                 contentScale = ContentScale.Crop
                             )
                         } else {
-                            Box(modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text("Foto tidak tersedia.")
                             }
                         }
@@ -153,13 +165,11 @@ fun FormResponseDetailScreen(
                             Text("Data lokasi tidak tersedia untuk respons ini.")
                         }
 
-                        Divider(modifier = Modifier.padding(vertical = 24.dp))
-
                         // Detail Jawaban
                         Text("Detail Jawaban:", style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(8.dp))
                         response.answers?.forEach { answer ->
-                            AnswerDetailCard(answer)
+                            AnswerDetailCard(answer) // <-- Memanggil Composable yang sudah dimodifikasi
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
@@ -169,8 +179,13 @@ fun FormResponseDetailScreen(
     }
 }
 
+// --- FUNGSI AnswerDetailCard YANG DIPERBAIKI ---
 @Composable
 fun AnswerDetailCard(answer: AnswerApiModel) {
+    val answerText = answer.answerText ?: "Tidak dijawab"
+    // Cek apakah jawaban adalah URI gambar yang valid dari server
+    val isImageUrl = answerText.startsWith("http://") || answerText.startsWith("https://")
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -181,12 +196,30 @@ fun AnswerDetailCard(answer: AnswerApiModel) {
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = answer.answerText?.replace(";;", ", ") ?: "Tidak dijawab",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Tampilkan gambar jika jawaban adalah URL gambar, jika tidak, tampilkan sebagai teks
+            if (isImageUrl) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(answerText)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Jawaban gambar untuk: ${answer.question?.questionText}",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp) // Sesuaikan tinggi sesuai kebutuhan
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.LightGray),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    text = answerText.replace(";;", ", "),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
         }
     }
 }

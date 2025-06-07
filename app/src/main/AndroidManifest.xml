@@ -27,6 +27,12 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Eform"
         tools:targetApi="31">
+
+<!--        kalo mau pake google maps api-->
+<!--        <meta-data-->
+<!--            android:name="com.google.android.geo.API_KEY"-->
+<!--            android:value="API GOGGLE MAPS" />-->
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
