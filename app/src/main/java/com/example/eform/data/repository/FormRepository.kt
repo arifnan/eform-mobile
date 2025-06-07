@@ -265,5 +265,50 @@ class FormRepository(private val apiService: ApiService) {
         }
     }
 
+    suspend fun getFavoriteForms(): Result<List<FormApiModel>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.getFavoriteForms()
+                if (response.isSuccessful && response.body() != null) {
+                    Result.success(response.body()!!)
+                } else {
+                    Result.failure(IOException("API Error: ${response.code()} - Gagal memuat favorit"))
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException("Network error: ${e.message}", e))
+            }
+        }
+    }
+
+    suspend fun addFavorite(formId: Int): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.addFavorite(formId)
+                if (response.isSuccessful) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IOException("API Error: ${response.code()} - Gagal menambah favorit"))
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException("Network error: ${e.message}", e))
+            }
+        }
+    }
+
+    suspend fun removeFavorite(formId: Int): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = apiService.removeFavorite(formId)
+                if (response.isSuccessful) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IOException("API Error: ${response.code()} - Gagal menghapus favorit"))
+                }
+            } catch (e: Exception) {
+                Result.failure(IOException("Network error: ${e.message}", e))
+            }
+        }
+    }
+
 
 }

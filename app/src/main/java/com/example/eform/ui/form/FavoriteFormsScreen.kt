@@ -1,6 +1,7 @@
 package com.example.eform.ui.form
 
 import android.app.Application
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -29,18 +30,28 @@ import com.example.eform.ui.viewmodel.FavoriteFormsViewModel
 @Composable
 fun FavoriteFormsScreen(
     navController: NavController,
-    userIdentifier: String,
+    userIdentifier: String, // userIdentifier mungkin tidak lagi diperlukan di sini, tapi kita pertahankan untuk konsistensi navigasi
     favoriteFormsViewModel: FavoriteFormsViewModel = viewModel(
         factory = FavoriteFormsViewModel.FavoriteFormsViewModelFactory(
             LocalContext.current.applicationContext as Application
         )
     )
 ) {
-    val favoriteFormsApiList by favoriteFormsViewModel.favoriteFormsApi.collectAsState() // <<< Gunakan StateFlow baru
+    val context = LocalContext.current
+    val favoriteFormsApiList by favoriteFormsViewModel.favoriteFormsApi.collectAsState()
     val isLoading by favoriteFormsViewModel.isLoading.collectAsState()
+    val errorMessage by favoriteFormsViewModel.errorMessage.collectAsState()
 
-    LaunchedEffect(userIdentifier) {
-        favoriteFormsViewModel.loadFavoriteFormsAndSetIdentifier(userIdentifier) // Gunakan fungsi baru
+    // Menampilkan pesan error jika ada
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // Memuat data saat layar pertama kali ditampilkan
+    LaunchedEffect(Unit) {
+        favoriteFormsViewModel.loadFavoriteForms()
     }
 
     Scaffold(
@@ -59,7 +70,7 @@ fun FavoriteFormsScreen(
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
                 }
-            } else if (favoriteFormsApiList.isEmpty()) { // <<< Cek list baru
+            } else if (favoriteFormsApiList.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text("Anda belum memiliki formulir favorit.", style = MaterialTheme.typography.bodyLarge)
                 }
@@ -71,15 +82,20 @@ fun FavoriteFormsScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(favoriteFormsApiList, key = { it.id }) { formApiModel -> // <<< Iterasi list baru
-                        FormCardItem( // FormCardItem sekarang menerima FormApiModel
-                            form = formApiModel, // <<< Kirim FormApiModel
-                            isFavorite = true, // Semua di sini pasti favorit
+                    items(favoriteFormsApiList, key = { it.id }) { formApiModel ->
+                        FormCardItem(
+                            form = formApiModel,
+                            isFavorite = true, // Semua item di sini adalah favorit
                             onFormClick = { formId ->
-                                navController.navigate(Screen.PreviewForm.route.replace("{formId}", "$formId"))
+                                // Navigasi ke PreviewFormScreen (perlu NavController)
+                                navController.navigate(
+                                    Screen.PreviewForm.route.replace("{formId}", "$formId")
+                                )
                             },
-                            onToggleFavorite = { formId, newFavoriteStatus ->
-                                favoriteFormsViewModel.toggleFavoriteStatus(formId, newFavoriteStatus)
+                            onToggleFavorite = { formId, _ ->
+                                // Di layar favorit, toggle berarti menghapus favorit
+                                favoriteFormsViewModel.removeFavorite(formId)
+                                Toast.makeText(context, "Dihapus dari favorit", Toast.LENGTH_SHORT).show()
                             }
                         )
                     }

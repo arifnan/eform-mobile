@@ -52,7 +52,7 @@ fun AppNavHost(
     val favoriteFormsViewModelFactory = FavoriteFormsViewModel.FavoriteFormsViewModelFactory(application)
     val profileViewModelFactory = ProfileViewModel.ProfileViewModelFactory(application)
     val historyFormViewModelFactory = HistoryFormViewModel.HistoryFormViewModelFactory(application)
-
+    val previewFormViewModelFactory = PreviewFormViewModel.Factory(application)
 
     NavHost(navController = navController, startDestination = Screen.Splash.route) {
         composable(Screen.Splash.route) {
@@ -224,9 +224,17 @@ fun AppNavHost(
         ) { backStackEntry ->
             val formId = backStackEntry.arguments?.getInt("formId") ?: 0
             if (formId == 0) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("ID Formulir tidak valid.") }
+                // Tampilkan pesan error jika formId tidak valid
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("ID Formulir tidak valid.")
+                }
             } else {
-                PreviewFormScreen(navController = navController,formId = formId) // PreviewFormViewModel jika diperlukan
+                // Berikan ViewModel ke Screen
+                PreviewFormScreen(
+                    navController = navController,
+                    formId = formId,
+                    viewModel = viewModel(factory = previewFormViewModelFactory)
+                )
             }
         }
 

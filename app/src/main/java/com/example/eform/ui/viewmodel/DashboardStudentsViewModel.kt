@@ -48,11 +48,15 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
     private val _uiState = MutableStateFlow<StudentDashboardUiState>(StudentDashboardUiState.Idle)
     val uiState: StateFlow<StudentDashboardUiState> = _uiState.asStateFlow()
 
+    // StateFlow untuk hasil validasi kode
     private val _formCodeValidationResult = MutableStateFlow<FormCodeValidationResult>(FormCodeValidationResult.Idle)
     val formCodeValidationResult: StateFlow<FormCodeValidationResult> = _formCodeValidationResult.asStateFlow()
 
     private val _studentName = MutableStateFlow("Siswa")
     val studentName: StateFlow<String> = _studentName.asStateFlow()
+
+
+
 
     // Fungsi untuk memuat data awal dashboard siswa
     // userIdentifier bisa berupa email atau ID siswa, tergantung bagaimana Anda mengidentifikasinya
@@ -107,6 +111,7 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
     }
 
 
+    // Fungsi untuk memvalidasi kode formulir melalui API
     fun validateFormCode(formCode: String) {
         viewModelScope.launch {
             _formCodeValidationResult.value = FormCodeValidationResult.Loading
@@ -115,7 +120,7 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
                 return@launch
             }
 
-            val result = formRepository.getFormByCode(formCode)
+            val result = formRepository.getFormByCode(formCode) // Memanggil repository
             result.fold(
                 onSuccess = { formApiModel ->
                     _formCodeValidationResult.value = FormCodeValidationResult.Valid(formApiModel)
@@ -127,6 +132,7 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
+    // Fungsi untuk me-reset state validasi setelah navigasi atau menampilkan pesan
     fun resetFormCodeValidation() {
         _formCodeValidationResult.value = FormCodeValidationResult.Idle
     }

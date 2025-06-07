@@ -121,18 +121,13 @@ fun FormAnswerScreen(
             Toast.makeText(context, "Izin kamera diperlukan.", Toast.LENGTH_LONG).show()
         }
     }
-    val locationPermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        val fineLocationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
-        val coarseLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
 
-        if (fineLocationGranted || coarseLocationGranted) {
-            formAnswerViewModel.validateLocation(
-                Constants.DEFAULT_TARGET_LATITUDE,
-                Constants.DEFAULT_TARGET_LONGITUDE,
-                Constants.LOCATION_VALIDATION_RADIUS_METERS
-            )
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission() // Diubah ke single permission
+    ) { isGranted ->
+        if (isGranted) {
+            // Langsung panggil validateLocation dari ViewModel
+            formAnswerViewModel.validateLocation()
         } else {
             locationMessageDisplay = "❌ Izin lokasi ditolak."
             Toast.makeText(context, "Izin lokasi diperlukan untuk fitur ini.", Toast.LENGTH_LONG).show()
@@ -167,8 +162,8 @@ fun FormAnswerScreen(
                 formAnswerViewModel.resetUiState()
                 navController.popBackStack() // Kembali setelah sukses
             }
-            is FormAnswerUiState.SubmissionError -> {
-                Toast.makeText(context, state.error, Toast.LENGTH_LONG).show()
+            is FormAnswerUiState.Error -> {
+                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
                 formAnswerViewModel.resetUiState()
             }
             else -> { /* Idle, LoadingQuestions, Submitting dihandle oleh UI lain */ }
@@ -239,18 +234,14 @@ fun FormAnswerScreen(
                     Spacer(Modifier.height(8.dp))
                     Button(
                         onClick = {
-                            val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
-                            } else {
-                                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
-                            }
-                            locationPermissionLauncher.launch(permissions)
+                            // Cukup panggil launcher izin. Logika validasi sudah ada di ViewModel.
+                            locationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.LocationOn, "Ambil Lokasi")
                         Spacer(Modifier.width(8.dp))
-                        Text("Ambil Lokasi Saat Ini")
+                        Text("Validasi Lokasi Saat Ini")
                     }
 
                     Spacer(Modifier.height(16.dp))
@@ -306,7 +297,7 @@ fun FormAnswerScreen(
                     }
                 }
             }
-            is FormAnswerUiState.SubmissionError -> { // Ditangani oleh LaunchedEffect, tapi bisa ada UI fallback
+            is FormAnswerUiState.Error -> { // Ditangani oleh LaunchedEffect, tapi bisa ada UI fallback
                 Box(modifier = Modifier.fillMaxSize().padding(innerPadding), contentAlignment = Alignment.Center) {
                     Text("Gagal mengirim. Silakan coba lagi atau periksa koneksi Anda.")
                 }
@@ -440,7 +431,7 @@ fun QuestionDisplayItem(
                         }
                     }
                     // Menambahkan case untuk TrueFalse dan FileUpload
-                    QuestionType.TrueFalse -> {
+                    QuestionType.true_false -> {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.Start // Atau SpaceEvenly
@@ -476,7 +467,7 @@ fun QuestionDisplayItem(
                             }
                         }
                     }
-                    QuestionType.FileUpload -> {
+                    QuestionType.file_upload -> {
                         // Untuk FileUpload, kita bisa tampilkan nama file jika sudah dipilih,
                         // atau tombol untuk memilih file.
                         // Implementasi pemilihan file sebenarnya memerlukan ActivityResultLauncher.

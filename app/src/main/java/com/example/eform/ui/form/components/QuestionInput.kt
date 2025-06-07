@@ -184,14 +184,14 @@ fun QuestionInput(
                     )
                 }
                 // Menambahkan case untuk TrueFalse dan FileUpload
-                QuestionType.TrueFalse -> {
+                QuestionType.true_false -> {
                     Text(
                         "Responden akan memilih antara Benar atau Salah.",
                         style = MaterialTheme.typography.bodySmall,
                         color = Color.Gray
                     )
                 }
-                QuestionType.FileUpload -> {
+                QuestionType.file_upload -> {
                     Text(
                         "Responden akan diminta untuk mengunggah file.",
                         style = MaterialTheme.typography.bodySmall,

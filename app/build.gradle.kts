@@ -80,6 +80,7 @@ dependencies {
     implementation(libs.androidx.material3) // Jika Anda sudah mendefinisikan libs.androidx.material3 di libs.versions.toml
 
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.play.services.maps)
     // implementation(libs.androidx.navigation.runtime.ktx) // Ini biasanya transitif dari navigation.compose
 
     // Firebase App Distribution Gradle Plugin seharusnya hanya di level project build.gradle

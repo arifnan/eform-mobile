@@ -1,88 +1,59 @@
 package com.example.eform.ui.viewmodel
 
 import android.app.Application
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.viewModelScope
-import com.example.eform.data.api.RetrofitInstance // Diperlukan untuk FormRepository
-import com.example.eform.data.database.AppDatabase
-import com.example.eform.data.model.UserFavoriteFormEntity
-import com.example.eform.data.model.api.FormApiModel // ViewModel akan menghasilkan ini
-import com.example.eform.data.repository.FormRepository // Diperlukan
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import android.util.Log
+import androidx.lifecycle.*
+import com.example.eform.data.api.RetrofitInstance
+import com.example.eform.data.model.api.FormApiModel
+import com.example.eform.data.repository.FormRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class FavoriteFormsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val userDao = AppDatabase.getDatabase(application).userDao()
-    private val userFavoriteFormDao = AppDatabase.getDatabase(application).userFavoriteFormDao()
-    private val formRepository = FormRepository(RetrofitInstance.api) // Untuk mengambil detail FormApiModel
+    private val formRepository = FormRepository(RetrofitInstance.api)
 
     private val _favoriteFormsApi = MutableStateFlow<List<FormApiModel>>(emptyList())
-    val favoriteFormsApi: StateFlow<List<FormApiModel>> = _favoriteFormsApi.asStateFlow()
+    val favoriteFormsApi: StateFlow<List<FormApiModel>> = _favoriteFormsApi
 
     private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    val isLoading: StateFlow<Boolean> = _isLoading
 
-    private var currentUserId: Int? = null
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage
 
-    fun loadFavoriteForms(userIdentifier: String) {
+    // Diubah menjadi load dari API
+    fun loadFavoriteForms() {
         viewModelScope.launch {
             _isLoading.value = true
-            currentUserId = withContext(Dispatchers.IO) {
-                userDao.getUserByNip(userIdentifier)?.id ?: userDao.getUserByEmail(userIdentifier)?.id
-            }
-
-            currentUserId?.let { userId ->
-                val favoriteFormIds = withContext(Dispatchers.IO) {
-                    userFavoriteFormDao.getFavoriteFormIdsByUserId(userId)
+            _errorMessage.value = null
+            val result = formRepository.getFavoriteForms()
+            result.fold(
+                onSuccess = { forms ->
+                    _favoriteFormsApi.value = forms
+                },
+                onFailure = { error ->
+                    _errorMessage.value = error.message ?: "Gagal memuat formulir favorit."
                 }
-
-                if (favoriteFormIds.isNotEmpty()) {
-                    // Ambil detail setiap FormApiModel dari API secara paralel
-                    val deferredFormApiModels = favoriteFormIds.map { formId ->
-                        async(Dispatchers.IO) {
-                            formRepository.getFormDetails(formId).getOrNull() // Ambil hasilnya atau null jika error
-                        }
-                    }
-                    // Tunggu semua panggilan API selesai dan filter yang tidak null
-                    val formsFromApi = deferredFormApiModels.awaitAll().filterNotNull()
-                    _favoriteFormsApi.value = formsFromApi
-                } else {
-                    _favoriteFormsApi.value = emptyList()
-                }
-            } ?: run {
-                _favoriteFormsApi.value = emptyList()
-            }
+            )
             _isLoading.value = false
         }
     }
 
-    fun toggleFavoriteStatus(formId: Int, newStatus: Boolean) { // Ini akan menghapus dari favorit
-        val userIdForToggle = currentUserId ?: return
-        viewModelScope.launch(Dispatchers.IO) {
-            if (!newStatus) { // Hanya hapus jika newStatus adalah false
-                userFavoriteFormDao.removeFavorite(UserFavoriteFormEntity(userIdForToggle, formId))
+    // Fungsi untuk menghapus favorit dari halaman ini
+    fun removeFavorite(formId: Int) {
+        viewModelScope.launch {
+            val result = formRepository.removeFavorite(formId)
+            if (result.isSuccess) {
+                // Hapus item dari list lokal untuk update UI instan
+                val updatedList = _favoriteFormsApi.value.filter { it.id != formId }
+                _favoriteFormsApi.value = updatedList
+            } else {
+                _errorMessage.value = result.exceptionOrNull()?.message ?: "Gagal menghapus favorit."
             }
-            // Muat ulang daftar favorit setelah status diubah
-            // Ini akan memicu pemanggilan API lagi untuk form yang tersisa
-            currentUserIdentifier?.let { loadFavoriteForms(it) } // Perlu cara mendapatkan userIdentifier lagi
         }
     }
-    // Simpan userIdentifier saat loadFavoriteForms dipanggil pertama kali
-    private var currentUserIdentifier: String? = null
-    fun loadFavoriteFormsAndSetIdentifier(userIdentifier: String) {
-        this.currentUserIdentifier = userIdentifier
-        loadFavoriteForms(userIdentifier)
-    }
-
 
     class FavoriteFormsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {

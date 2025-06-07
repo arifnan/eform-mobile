@@ -2,7 +2,6 @@ package com.example.eform.ui.profile
 
 import android.app.Application
 import android.net.Uri
-import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -19,11 +18,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
-import androidx.compose.material3.CardDefaults.cardColors
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,22 +31,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import androidx.navigation.compose.rememberNavController
 import coil.compose.rememberAsyncImagePainter
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.example.eform.R
 import com.example.eform.data.model.api.UserApiModel
 import com.example.eform.navigation.Screen
-import com.example.eform.ui.theme.EformTheme
+import com.example.eform.ui.components.StandardTopAppBar
 import com.example.eform.ui.viewmodel.AuthViewModel
 import com.example.eform.ui.viewmodel.ProfileUiState
 import com.example.eform.ui.viewmodel.ProfileViewModel
 import com.example.eform.ui.viewmodel.UpdateProfileResult
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -113,24 +109,20 @@ fun ProfileScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Profile", fontSize = 25.sp, fontWeight = FontWeight.Bold, color = Color.White) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (editMode) {
-                            editMode = false
-                            if (uiState is ProfileUiState.Success) {
-                                resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
-                            }
-                            Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
-                        } else {
-                            navController.popBackStack()
+            StandardTopAppBar(
+                title = "Profil",
+                navController = navController,
+                onBackClicked = {
+                    if (editMode) {
+                        editMode = false
+                        if (uiState is ProfileUiState.Success) {
+                            resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
                         }
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, if (editMode) "Batal Edit" else "Kembali", tint = Color.White)
+                        Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
+                    } else {
+                        navController.popBackStack()
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = MaterialTheme.colorScheme.primary)
+                }
             )
         }
     ) { paddingValues ->
@@ -161,23 +153,35 @@ fun ProfileScreen(
                             .clickable(enabled = editMode) { pickImage.launch("image/*") }
                     ) {
                         val imageToDisplay = imageUri ?: currentProfilePhotoUrl
+
+                        // ==========================================================
+                        // === PERBAIKAN UTAMA ADA DI SINI ===
+                        // ==========================================================
+                        val painter = rememberAsyncImagePainter(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(imageToDisplay ?: R.drawable.ic_default_profile)
+                                .crossfade(true)
+                                // Paksa Coil untuk selalu mengambil dari jaringan,
+                                // mengabaikan cache memori dan disk.
+                                .memoryCachePolicy(CachePolicy.DISABLED)
+                                .diskCachePolicy(CachePolicy.DISABLED)
+                                .build()
+                        )
+                        // ==========================================================
+
                         Image(
-                            painter = rememberAsyncImagePainter(
-                                model = imageToDisplay ?: R.drawable.ic_default_profile
-                            ),
+                            painter = painter,
                             contentDescription = "Profile Picture",
                             modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
                         if (editMode) {
-                            Box(
-                                contentAlignment = Alignment.BottomEnd,
-                                modifier = Modifier.fillMaxSize().padding(8.dp)
-                            ) {
+                            Box(contentAlignment = Alignment.BottomEnd, modifier = Modifier.fillMaxSize().padding(8.dp)) {
                                 Icon(Icons.Default.Edit, "Edit Foto", tint = Color.White, modifier = Modifier.background(Color.Black.copy(alpha = 0.5f), CircleShape).padding(4.dp))
                             }
                         }
                     }
+
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
                         text = if (editMode) editableName else (user.name ?: "Nama Tidak Tersedia"),
@@ -256,6 +260,7 @@ fun ProfileScreen(
     }
 }
 
+// ... (Composable ProfileDataField tetap sama)
 @Composable
 fun ProfileDataField(
     label: String,
@@ -296,7 +301,7 @@ fun ProfileDataField(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(8.dp),
-                colors = cardColors(
+                colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -311,16 +316,5 @@ fun ProfileDataField(
                 )
             }
         }
-    }
-}
-
-@Preview(showBackground = true, name = "Profile Screen Preview")
-@Composable
-fun PreviewProfileScreenWithViewModel() {
-    EformTheme {
-        ProfileScreen(
-            navController = rememberNavController(),
-            userIdentifier = "dummyNip123"
-        )
     }
 }

@@ -21,7 +21,7 @@ sealed class Screen(val route: String) {
     object PreviewForm : Screen("preview_form/{formId}")
     object ResponseList : Screen("response_list/{formId}/{formTitle}") // Untuk daftar respons
     object FormResponseDetail : Screen("form_response_detail/{responseId}") // Untuk detail respons
-
+    object ResponseDetail : Screen("response_detail/{responseId}")
 }
 
 

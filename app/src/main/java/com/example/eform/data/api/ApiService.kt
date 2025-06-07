@@ -4,8 +4,10 @@ import com.example.eform.data.model.api.*
 import com.example.eform.data.model.LoginRequest
 import com.example.eform.data.model.RegisterRequest
 import com.google.gson.annotations.SerializedName
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -38,16 +40,13 @@ interface ApiService {
     // Rute dari UserController.php (untuk update profil)
     // Di api.php Anda: Route::put('/profile', [UserController::class, 'updateProfile']);
     @Multipart
-    @PUT("profile") // Menggunakan PUT sesuai rute Anda
+    @POST("profile") // <-- UBAH DARI @PUT MENJADI @POST
     suspend fun updateUserProfile(
         @Part("name") name: RequestBody?,
         @Part("address") address: RequestBody?,
         @Part profilePhoto: MultipartBody.Part?,
         @Part("grade") grade: RequestBody?,
-        @Part("subject") subject: RequestBody?
-        // Jika Laravel Anda mengharapkan _method untuk PUT dengan multipart:
-        // @Part("_method") method: RequestBody = "PUT".toRequestBody("text/plain".toMediaTypeOrNull())
-        // Namun, karena rute di Laravel sudah PUT, _method mungkin tidak diperlukan. Uji ini.
+        @Part("subject") subject: RequestBody?,
     ): Response<UserApiModel>
 
 
@@ -125,5 +124,15 @@ interface ApiService {
     @GET("student/responses/history") // GET /student/responses/history -> apiGetResponseHistory
     suspend fun getStudentSubmittedResponsesHistory(): Response<List<FormResponseApiModel>>
 
+
+    // --- ENDPOINT UNTUK FAVORIT ---
+    @GET("favorites")
+    suspend fun getFavoriteForms(): Response<List<FormApiModel>>
+
+    @POST("forms/{form_id}/favorite")
+    suspend fun addFavorite(@Path("form_id") formId: Int): Response<Unit> // Respons bisa kosong
+
+    @DELETE("forms/{form_id}/favorite")
+    suspend fun removeFavorite(@Path("form_id") formId: Int): Response<Unit> // Respons bisa kosong
 
 }

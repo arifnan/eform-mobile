@@ -13,7 +13,9 @@ import com.example.eform.data.model.NotificationEntity
 import com.example.eform.data.model.QuestionEntity // Digunakan di FormAnswerUiState
 import com.example.eform.data.model.api.AnswerPayload
 import com.example.eform.data.repository.FormRepository
+import com.example.eform.ui.form.components.QuestionType
 import com.example.eform.utils.LocationHelper
+import com.google.android.gms.maps.model.LatLng
 // NotificationHelper tidak dipanggil dari ViewModel, tapi dari UI berdasarkan event
 // import com.example.eform.utils.NotificationHelper
 // import com.example.eform.navigation.Screen
@@ -24,6 +26,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
+
+
+data class SchoolLocation(
+    val name: String,
+    val coordinate: LatLng,
+    val radius: Double = 150.0
+)
+
 // Sealed class untuk state UI FormAnswerScreen
 sealed class FormAnswerUiState {
     object Idle : FormAnswerUiState()
@@ -32,53 +42,112 @@ sealed class FormAnswerUiState {
     object Submitting : FormAnswerUiState()
     // Tambahkan parameter untuk notifikasi sistem jika perlu
     data class SubmissionSuccess(val successMessage: String, val notificationTitle: String? = null, val notificationMessageForSytem: String? = null) : FormAnswerUiState()
-    data class SubmissionError(val error: String) : FormAnswerUiState()
+    data class Error(val message: String) : FormAnswerUiState()
     data class LocationValidationResult(val isValid: Boolean, val message: String, val lat: Double?, val lng: Double?) : FormAnswerUiState()
 }
 
 class FormAnswerViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Inisialisasi repository, DAO, dan helper
     private val formRepository = FormRepository(RetrofitInstance.api)
-    private val formDao = AppDatabase.getDatabase(application).formDao()
     private val userDao = AppDatabase.getDatabase(application).userDao()
     private val notificationDao = AppDatabase.getDatabase(application).notificationDao()
-    private val locationHelper = LocationHelper(application) // Application context dari AndroidViewModel
+    private val locationHelper = LocationHelper(application)
 
-    // StateFlow untuk UI state
     private val _uiState = MutableStateFlow<FormAnswerUiState>(FormAnswerUiState.Idle)
     val uiState: StateFlow<FormAnswerUiState> = _uiState
 
     private var currentStudentId: Int? = null
-    // private lateinit var currentStudentIdentifier: String // Tidak perlu disimpan jika hanya untuk init
     private var currentFormEntity: FormEntity? = null
 
+    // ===============================================
+    // === PERUBAHAN UTAMA ADA DI SINI ===
+    // ===============================================
+
+    // Daftar lokasi sekolah yang diizinkan (hardcoded)
+    private val allowedSchoolLocations = listOf(
+        SchoolLocation(name = "SMA Negeri 7 Lhokseumawe", coordinate = LatLng(5.1836, 97.1443), radius = 200.0), // Koordinat dari file Anda
+        SchoolLocation(name = "SMA Negeri 5 Lhokseumawe", coordinate = LatLng(5.1768, 97.1438)), // Koordinat perkiraan
+        SchoolLocation(name = "SMA Negeri 6 Lhokseumawe", coordinate = LatLng(5.1700, 97.1500)),  // Koordinat perkiraan
+        SchoolLocation(name = "Lokasi Testing Anda", coordinate = LatLng(3.579741, 98.621874), radius = 200.0)
+    )
+
+    // Fungsi untuk memvalidasi lokasi (TIDAK PERLU PARAMETER LAGI)
+    fun validateLocation() {
+        locationHelper.getCurrentLocation(object : LocationHelper.LocationCallback {
+            override fun onLocationResult(lat: Double, lng: Double) {
+                // Cek apakah lokasi saat ini berada di dalam radius salah satu sekolah
+                val validSchool = allowedSchoolLocations.find { school ->
+                    locationHelper.isWithinRadius(
+                        currentLat = lat,
+                        currentLng = lng,
+                        targetLat = school.coordinate.latitude,
+                        targetLng = school.coordinate.longitude,
+                        radiusInMeters = school.radius
+                    )
+                }
+
+                val isValid = validSchool != null
+                val message = if (isValid) {
+                    "✅ Lokasi valid di area ${validSchool?.name}"
+                } else {
+                    "❌ Anda berada di luar area sekolah yang diizinkan."
+                }
+                _uiState.value = FormAnswerUiState.LocationValidationResult(isValid, message, lat, lng)
+            }
+            override fun onError(message: String) {
+                _uiState.value = FormAnswerUiState.LocationValidationResult(false, "❌ Gagal mendapatkan lokasi: $message", null, null)
+            }
+        })
+    }
 
     // Fungsi untuk memuat detail formulir dan pertanyaan
     fun loadFormDetails(formId: Int, studentUserIdentifier: String) {
-        // this.currentStudentIdentifier = studentUserIdentifier // Simpan jika akan digunakan lagi
         viewModelScope.launch {
             _uiState.value = FormAnswerUiState.LoadingQuestions
-            // 1. Dapatkan studentId dari email siswa
+
+            // 1. Dapatkan studentId dari email siswa (jika diperlukan untuk validasi lain)
             currentStudentId = withContext(Dispatchers.IO) { userDao.getUserByEmail(studentUserIdentifier)?.id }
             if (currentStudentId == null) {
-                _uiState.value = FormAnswerUiState.SubmissionError("Gagal mengidentifikasi data siswa.")
+                _uiState.value = FormAnswerUiState.Error("Gagal mengidentifikasi data siswa.")
                 return@launch
             }
 
-            // 2. Ambil FormEntity dan QuestionEntity dari database lokal (Room)
-            // Ini berdasarkan asumsi FormAnswerScreen menerima FormEntity dari AppNavHost,
-            // yang berarti FormEntity sudah ada di Room.
-            // Jika FormAnswerScreen hanya menerima formId dan harus fetch dari API, logikanya akan berbeda.
-            val formEntityFromDb = withContext(Dispatchers.IO) { formDao.getFormWithQuestions(formId) }
-            if (formEntityFromDb == null) {
-                _uiState.value = FormAnswerUiState.SubmissionError("Formulir dengan ID $formId tidak ditemukan di database lokal.")
-                return@launch
-            }
-            currentFormEntity = formEntityFromDb
+            // ===============================================
+            // === PERBAIKAN UTAMA ADA DI SINI ===
+            // ===============================================
+            // 2. Ambil FormApiModel dari API menggunakan FormRepository
+            val result = formRepository.getFormDetails(formId)
+            result.fold(
+                onSuccess = { formApiModel ->
+                    // Konversi FormApiModel ke FormEntity dan QuestionEntity untuk ditampilkan di UI
+                    // Ini memungkinkan UI Anda tetap menggunakan model Entity yang sudah ada
+                    val formEntity = FormEntity(
+                        id = formApiModel.id,
+                        title = formApiModel.title,
+                        description = formApiModel.description ?: "",
+                        formCode = formApiModel.formCode
+                    )
+                    currentFormEntity = formEntity // Simpan untuk referensi
 
-            val questionsFromDb = withContext(Dispatchers.IO) { formDao.getQuestionsForForm(formId) }
-            _uiState.value = FormAnswerUiState.QuestionsLoaded(formEntityFromDb, questionsFromDb)
+                    val questionEntities = formApiModel.questions?.map { qApi ->
+                        QuestionEntity(
+                            id = qApi.id,
+                            formId = qApi.formId,
+                            questionText = qApi.questionText,
+                            questionType = QuestionType.fromString(qApi.questionType) ?: QuestionType.Text,
+                            options = qApi.options ?: emptyList(),
+                            required = qApi.required,
+                            answer = "" // Jawaban awal kosong
+                        )
+                    } ?: emptyList()
+
+                    _uiState.value = FormAnswerUiState.QuestionsLoaded(formEntity, questionEntities)
+                },
+                onFailure = { error ->
+                    _uiState.value = FormAnswerUiState.Error(error.message ?: "Gagal memuat formulir dari server.")
+                }
+            )
+            // ===============================================
         }
     }
 
@@ -97,6 +166,33 @@ class FormAnswerViewModel(application: Application) : AndroidViewModel(applicati
         })
     }
 
+    // ==============================================================================
+    /*
+     LOGIKA ALTERNATIF (SESUAI PERMINTAAN ANDA)
+     Jika ingin siswa bisa mengisi dari mana saja, beri komentar pada fungsi `validateLocation()` di atas,
+     dan hapus tanda komentar dari fungsi `validateLocationAnywhere()` di bawah ini.
+     Lalu ganti namanya menjadi `validateLocation()`.
+    */
+    /*
+    fun validateLocationAnywhere() {
+        locationHelper.getCurrentLocation(object : LocationHelper.LocationCallback {
+            override fun onLocationResult(lat: Double, lng: Double) {
+                // Saat lokasi berhasil didapat, langsung anggap valid.
+                val isValid = true
+                val message = "✅ Lokasi berhasil diambil ($lat, $lng)"
+                // Kirim state sukses beserta data lat/lng untuk disimpan
+                _uiState.value = FormAnswerUiState.LocationValidationResult(isValid, message, lat, lng)
+            }
+            override fun onError(message: String) {
+                // Jika gagal, kirim state tidak valid.
+                _uiState.value = FormAnswerUiState.LocationValidationResult(false, "❌ Gagal mendapatkan lokasi: $message", null, null)
+            }
+        })
+    }
+    */
+    // ==============================================================================
+
+
     // Fungsi untuk mengirimkan jawaban formulir
     fun submitAnswers(
         formId: Int, // ID formulir dari API
@@ -110,15 +206,15 @@ class FormAnswerViewModel(application: Application) : AndroidViewModel(applicati
         val formTitleForNotification = currentFormEntity?.title ?: "Formulir"
 
         if (studentIdForSubmission == null) {
-            _uiState.value = FormAnswerUiState.SubmissionError("Siswa tidak teridentifikasi. Tidak bisa mengirim jawaban.")
+            _uiState.value = FormAnswerUiState.Error("Siswa tidak teridentifikasi. Tidak bisa mengirim jawaban.")
             return
         }
         if (!isLocationPreviouslyValidatedAndCorrect) {
-            _uiState.value = FormAnswerUiState.SubmissionError("Validasi lokasi gagal atau belum dilakukan dengan benar.")
+            _uiState.value = FormAnswerUiState.Error("Validasi lokasi gagal atau belum dilakukan dengan benar.")
             return
         }
         if (photoFile == null) {
-            _uiState.value = FormAnswerUiState.SubmissionError("Foto bukti wajib disertakan.")
+            _uiState.value = FormAnswerUiState.Error("Foto bukti wajib disertakan.")
             return
         }
 
@@ -161,7 +257,7 @@ class FormAnswerViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 },
                 onFailure = { exception ->
-                    _uiState.value = FormAnswerUiState.SubmissionError(exception.message ?: "Gagal mengirim jawaban ke server")
+                    _uiState.value = FormAnswerUiState.Error(exception.message ?: "Gagal mengirim jawaban ke server")
                 }
             )
         }
