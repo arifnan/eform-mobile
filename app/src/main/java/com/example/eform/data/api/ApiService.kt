@@ -120,19 +120,19 @@ interface ApiService {
     @GET("teacher/forms/history") // GET /teacher/forms/history -> apiGetFormHistory
     suspend fun getTeacherFormsHistory(): Response<List<FormApiModel>>
 
-    // Rute dari StudentController.php
-    @GET("student/responses/history") // GET /student/responses/history -> apiGetResponseHistory
-    suspend fun getStudentSubmittedResponsesHistory(): Response<List<FormResponseApiModel>>
+    @GET("student/responses/history")
+    suspend fun getStudentSubmittedResponsesHistory(): Response<HistoryResponseWrapper>
 
 
     // --- ENDPOINT UNTUK FAVORIT ---
+    // ================= FAVORITES =================
     @GET("favorites")
     suspend fun getFavoriteForms(): Response<List<FormApiModel>>
 
-    @POST("forms/{form_id}/favorite")
-    suspend fun addFavorite(@Path("form_id") formId: Int): Response<Unit> // Respons bisa kosong
+    @POST("forms/{id}/favorite")
+    suspend fun addFavorite(@Path("id") formId: Int): Response<Unit>
 
-    @DELETE("forms/{form_id}/favorite")
-    suspend fun removeFavorite(@Path("form_id") formId: Int): Response<Unit> // Respons bisa kosong
-
+    // ========== PERBAIKAN URL DI SINI ==========
+    @DELETE("forms/{id}/favorite")
+    suspend fun removeFavorite(@Path("id") formId: Int): Response<Unit>
 }

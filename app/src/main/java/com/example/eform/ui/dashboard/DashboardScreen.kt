@@ -1,6 +1,7 @@
 package com.example.eform.ui.dashboard
 
-import android.app.Application // Diperlukan untuk ViewModel Factory
+import android.app.Application
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
@@ -24,33 +26,67 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
 import com.example.eform.navigation.Screen
-import com.example.eform.ui.components.BottomBarItem // <<< Gunakan BottomBarItem yang benar
+import com.example.eform.ui.components.BottomBarItem
 import com.example.eform.ui.components.SimpleBottomNavigationBar
-import com.example.eform.ui.theme.EformTheme // Import tema untuk Preview
+import com.example.eform.ui.theme.EformTheme
 import com.example.eform.ui.viewmodel.DashboardFormsResult
 import com.example.eform.ui.viewmodel.DashboardViewModel
 
 @Composable
 fun DashboardScreen(
     navController: NavController,
-    userIdentifier: String, // NIP Guru
+    userIdentifier: String,
     dashboardViewModel: DashboardViewModel = viewModel(
         factory = DashboardViewModel.DashboardViewModelFactory(LocalContext.current.applicationContext as Application)
     )
 ) {
-    val context = LocalContext.current // Masih bisa berguna untuk Toast atau resource lain
     val formsResultState by dashboardViewModel.formsResult.collectAsState()
-    val userName by dashboardViewModel.userName.collectAsState()
-
-    var searchQuery by remember { mutableStateOf("") }
-    // sortOrder sekarang dikelola oleh ViewModel atau diteruskan ke loadTeacherDashboard
     var sortOrderState by remember { mutableStateOf("asc") }
-
 
     LaunchedEffect(userIdentifier, sortOrderState) {
         dashboardViewModel.loadTeacherDashboard(userIdentifier, sortOrderState)
     }
+
+    when (val result = formsResultState) {
+        is DashboardFormsResult.Loading -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+        }
+        is DashboardFormsResult.Error -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Error: ${result.message}")
+            }
+        }
+        is DashboardFormsResult.Success -> {
+            // Jika sukses, kita punya data user dan forms
+            DashboardContent(
+                navController = navController,
+                userIdentifier = userIdentifier,
+                state = result, // Kirim seluruh state Success
+                sortOrder = sortOrderState,
+                onSortOrderChange = { newSortOrder ->
+                    sortOrderState = newSortOrder
+                },
+                dashboardViewModel = dashboardViewModel
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardContent(
+    navController: NavController,
+    userIdentifier: String,
+    state: DashboardFormsResult.Success, // Terima state Success
+    sortOrder: String,
+    onSortOrderChange: (String) -> Unit,
+    dashboardViewModel: DashboardViewModel
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val user = state.user // Ambil data user dari state
 
     Scaffold(
         topBar = {
@@ -63,19 +99,35 @@ fun DashboardScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profile",
-                        tint = Color.White,
+                    // ========== PERBAIKAN PROFIL GAMBAR GURU ==========
+                    Box(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
+                            .background(Color.Gray)
                             .clickable {
                                 navController.navigate(Screen.Profile.route.replace("{userIdentifier}", userIdentifier))
                             }
-                    )
-                    Column(modifier = Modifier.padding(start = 8.dp)) {
-                        Text(text = "Hello, $userName", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    ) {
+                        if (user.profilePhotoUrl.isNullOrBlank()) {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = "Profile",
+                                tint = Color.White,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            AsyncImage(
+                                model = user.profilePhotoUrl,
+                                contentDescription = "Foto Profil",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    // ===============================================
+                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Text(text = "Hello, ${user.name}", color = Color.White, style = MaterialTheme.typography.titleMedium)
                         Text(text = "Welcome back", color = Color.White, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -83,11 +135,9 @@ fun DashboardScreen(
                     imageVector = Icons.Default.Notifications,
                     contentDescription = "Notifikasi",
                     tint = Color.White,
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clickable {
-                            navController.navigate(Screen.Notification.route.replace("{userIdentifier}", userIdentifier))
-                        }
+                    modifier = Modifier.size(28.dp).clickable {
+                        navController.navigate(Screen.Notification.route.replace("{userIdentifier}", userIdentifier))
+                    }
                 )
             }
         },
@@ -110,86 +160,62 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 TextButton(onClick = {
-                    sortOrderState = if (sortOrderState == "asc") "desc" else "asc"
-                    // LaunchedEffect akan memanggil dashboardViewModel.loadTeacherDashboard dengan sortOrderState baru
+                    onSortOrderChange(if (sortOrder == "asc") "desc" else "asc")
                 }) {
-                    Text("Sort by Title (${if (sortOrderState == "asc") "A-Z" else "Z-A"})")
+                    Text("Sort by Title (${if (sortOrder == "asc") "A-Z" else "Z-A"})")
                 }
                 Spacer(modifier = Modifier.height(8.dp))
 
-                when (val result = formsResultState) {
-                    is DashboardFormsResult.Loading -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator()
-                        }
+                val displayableForms = state.forms.filter {
+                    it.formApiData.title.contains(searchQuery, ignoreCase = true) ||
+                            it.formApiData.description?.contains(searchQuery, ignoreCase = true) == true
+                }
+                if (displayableForms.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(if (searchQuery.isNotBlank()) "Tidak ada formulir ditemukan." else "Anda belum membuat formulir.")
                     }
-                    is DashboardFormsResult.Success -> {
-                        val displayableForms = result.forms.filter {
-                            it.formApiData.title.contains(searchQuery, ignoreCase = true) ||
-                                    it.formApiData.description?.contains(searchQuery, ignoreCase = true) == true
-                        }
-                        if (displayableForms.isEmpty()) {
-                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Text(if (searchQuery.isNotBlank()) "Tidak ada formulir ditemukan." else "Anda belum membuat formulir.")
-                            }
-                        } else {
-                            LazyVerticalGrid(
-                                columns = GridCells.Fixed(2),
-                                contentPadding = PaddingValues(vertical = 8.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                items(displayableForms, key = { it.formApiData.id }) { formDisplayItem ->
-                                    FormCardItem(
-                                        form = formDisplayItem.formApiData, // Berikan FormApiModel
-                                        isFavorite = formDisplayItem.isUserFavorite,
-                                        onFormClick = { formId ->
-                                            navController.navigate(Screen.PreviewForm.route.replace("{formId}", "$formId"))
-                                        },
-                                        onToggleFavorite = { formId, newFavoriteStatus ->
-                                            dashboardViewModel.toggleFavoriteStatus(formId, newFavoriteStatus)
-                                        }
-                                    )
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        items(displayableForms, key = { it.formApiData.id }) { formDisplayItem ->
+                            FormCardItem(
+                                form = formDisplayItem.formApiData,
+                                isFavorite = formDisplayItem.isUserFavorite,
+                                onFormClick = { formId ->
+                                    navController.navigate(Screen.PreviewForm.route.replace("{formId}", "$formId"))
+                                },
+                                onToggleFavorite = { formId, newFavoriteStatus ->
+                                    dashboardViewModel.toggleFavoriteStatus(formId, newFavoriteStatus)
                                 }
-                            }
-                        }
-                    }
-                    is DashboardFormsResult.Error -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Error: ${result.message}")
-                            // Tambahkan tombol Retry jika perlu
+                            )
                         }
                     }
                 }
             }
         },
         bottomBar = {
-            // State selectedIndex untuk bottom bar dikelola di sini
             var selectedIndex by remember { mutableStateOf(0) }
             SimpleBottomNavigationBar(
                 selectedIndex = selectedIndex,
                 onItemSelected = { newIndex ->
-                    selectedIndex = newIndex // Update state selectedIndex
-                    // Gunakan BottomBarItem yang benar (untuk guru)
+                    selectedIndex = newIndex
                     val item = BottomBarItem.values()[newIndex]
                     val currentRoute = navController.currentBackStackEntry?.destination?.route
-
                     val targetRoute = when (item) {
                         BottomBarItem.Home -> Screen.Dashboard.route.replace("{userIdentifier}", userIdentifier)
                         BottomBarItem.FavoriteForms -> Screen.FavoriteForms.route.replace("{userIdentifier}", userIdentifier)
                         BottomBarItem.Add -> Screen.CreateForm.route.replace("{userIdentifier}", userIdentifier)
-                        BottomBarItem.History -> Screen.HistoryForm.route // Tambahkan userIdentifier jika perlu
+                        BottomBarItem.History -> Screen.HistoryForm.route
                         BottomBarItem.Profile -> Screen.Profile.route.replace("{userIdentifier}", userIdentifier)
-                        // Tidak perlu 'else' jika semua kasus enum sudah ditangani
                     }
-
-                    // Hanya navigasi jika target rute berbeda dengan rute saat ini
                     if (currentRoute != targetRoute) {
                         navController.navigate(targetRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) {
-                                saveState = true
-                            }
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                             launchSingleTop = true
                             restoreState = true
                         }
@@ -204,13 +230,12 @@ fun DashboardScreen(
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
-fun DashboardScreenPreview() { // Ganti nama Preview agar unik jika ada DashboardPreviewStudents
+fun DashboardScreenPreview() {
     EformTheme {
         val dummyNavController = rememberNavController()
         DashboardScreen(
             navController = dummyNavController,
             userIdentifier = "dummyNip123"
-            // ViewModel akan di-provide oleh default factory di preview jika tidak ada factory khusus preview
         )
     }
 }

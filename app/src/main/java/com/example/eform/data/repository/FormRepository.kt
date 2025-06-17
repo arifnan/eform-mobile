@@ -1,7 +1,7 @@
 package com.example.eform.data.repository
 
 import com.example.eform.data.api.ApiService
-import com.example.eform.data.model.api.* // Pastikan semua model API yang relevan diimpor
+import com.example.eform.data.model.api.*
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,8 +19,8 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getTeacherForms()
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                if (response.isSuccessful) {
+                    Result.success(response.body() ?: emptyList())
                 } else {
                     Result.failure(IOException("Get Forms API Error: ${response.code()} - ${response.message()}"))
                 }
@@ -86,7 +86,7 @@ class FormRepository(private val apiService: ApiService) {
 
     suspend fun submitFormResponse(
         formId: Int,
-        answers: List<AnswerPayload>, // Ini adalah List<AnswerPayload>
+        answers: List<AnswerPayload>,
         photoFile: File?,
         latitude: Double?,
         longitude: Double?
@@ -94,41 +94,25 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val formIdRb = formId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-                val answersJson =
-                    Gson().toJson(answers) // Konversi List<AnswerPayload> ke JSON String
+                val answersJson = Gson().toJson(answers)
                 val answersRb = answersJson.toRequestBody("application/json".toMediaTypeOrNull())
-                val latitudeRb =
-                    latitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val longitudeRb =
-                    longitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val latitudeRb = latitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val longitudeRb = longitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
                 var photoPart: MultipartBody.Part? = null
                 photoFile?.let {
                     val photoFileRb = it.asRequestBody("image/*".toMediaTypeOrNull())
-                    // "photo" harus sama dengan nama field yang diharapkan Laravel di ResponseController@store
                     photoPart = MultipartBody.Part.createFormData("photo", it.name, photoFileRb)
                 }
 
-                val response = apiService.submitFormResponse(
-                    formIdRb,
-                    latitudeRb,
-                    longitudeRb,
-                    answersRb,
-                    photoPart
-                )
+                val response = apiService.submitFormResponse(formIdRb, latitudeRb, longitudeRb, answersRb, photoPart)
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message()
-                    ?: "Submit Response failed"
+                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Submit Response failed"
                     Result.failure(IOException("Submit Response API Error: ${response.code()} - $errorMsg"))
                 }
             } catch (e: HttpException) {
-                Result.failure(
-                    IOException(
-                        "Submit Response HTTP Error: ${e.code()} - ${e.message()}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Submit Response HTTP Error: ${e.code()} - ${e.message()}", e))
             } catch (e: IOException) {
                 Result.failure(IOException("Network error submitting response: ${e.message}", e))
             } catch (e: Exception) {
@@ -137,12 +121,12 @@ class FormRepository(private val apiService: ApiService) {
         }
     }
 
-     suspend fun getResponsesForForm(formId: Int): Result<List<FormResponseApiModel>> {
+    suspend fun getResponsesForForm(formId: Int): Result<List<FormResponseApiModel>> {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getResponsesForForm(formId)
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                if (response.isSuccessful) {
+                    Result.success(response.body() ?: emptyList())
                 } else {
                     val errorMsg = response.errorBody()?.string() ?: "Gagal mengambil daftar respons"
                     Result.failure(IOException("API Error: ${response.code()} - $errorMsg"))
@@ -160,17 +144,11 @@ class FormRepository(private val apiService: ApiService) {
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: response.message()
-                    ?: "Formulir dengan kode '$formCode' tidak ditemukan"
+                    val errorMsg = response.errorBody()?.string() ?: response.message() ?: "Formulir dengan kode '$formCode' tidak ditemukan"
                     Result.failure(IOException("Get Form By Code API Error: ${response.code()} - $errorMsg"))
                 }
             } catch (e: HttpException) {
-                Result.failure(
-                    IOException(
-                        "Get Form By Code HTTP Error: ${e.code()} - ${e.message()}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Get Form By Code HTTP Error: ${e.code()} - ${e.message()}", e))
             } catch (e: IOException) {
                 Result.failure(IOException("Network error getting form by code: ${e.message}", e))
             } catch (e: Exception) {
@@ -183,32 +161,17 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getTeacherFormsHistory()
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                if (response.isSuccessful) {
+                    Result.success(response.body() ?: emptyList())
                 } else {
                     Result.failure(IOException("Get Teacher History API Error: ${response.code()} - ${response.message()}"))
                 }
             } catch (e: HttpException) {
-                Result.failure(
-                    IOException(
-                        "Get Teacher History HTTP Error: ${e.code()} - ${e.message()}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Get Teacher History HTTP Error: ${e.code()} - ${e.message()}", e))
             } catch (e: IOException) {
-                Result.failure(
-                    IOException(
-                        "Network error getting teacher history: ${e.message}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Network error getting teacher history: ${e.message}", e))
             } catch (e: Exception) {
-                Result.failure(
-                    IOException(
-                        "Unknown error getting teacher history: ${e.message}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Unknown error getting teacher history: ${e.message}", e))
             }
         }
     }
@@ -217,46 +180,33 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getStudentSubmittedResponsesHistory()
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                if (response.isSuccessful) {
+                    // Ambil 'data' dari dalam wrapper. Jika body null, kembalikan list kosong.
+                    val historyList = response.body()?.data ?: emptyList()
+                    Result.success(historyList)
                 } else {
                     Result.failure(IOException("Get Student History API Error: ${response.code()} - ${response.message()}"))
                 }
             } catch (e: HttpException) {
-                Result.failure(
-                    IOException(
-                        "Get Student History HTTP Error: ${e.code()} - ${e.message()}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Get Student History HTTP Error: ${e.code()} - ${e.message()}", e))
             } catch (e: IOException) {
-                Result.failure(
-                    IOException(
-                        "Network error getting student history: ${e.message}",
-                        e
-                    )
-                )
+                Result.failure(IOException("Network error getting student history: ${e.message}", e))
             } catch (e: Exception) {
-                Result.failure(
-                    IOException(
-                        "Unknown error getting student history: ${e.message}",
-                        e
-                    )
-                )
+                // Tangkap error parsing Gson di sini jika masih terjadi
+                Result.failure(IOException("Unknown error getting student history: ${e.message}", e))
             }
         }
     }
 
+
     suspend fun getResponseDetail(responseId: Int): Result<FormResponseApiModel> {
         return withContext(Dispatchers.IO) {
             try {
-                // Anda perlu menambahkan endpoint ini di ApiService.kt
                 val response = apiService.getResponseDetail(responseId)
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
-                    val errorMsg =
-                        response.errorBody()?.string() ?: "Gagal mengambil detail respons"
+                    val errorMsg = response.errorBody()?.string() ?: "Gagal mengambil detail respons"
                     Result.failure(IOException("API Error: ${response.code()} - $errorMsg"))
                 }
             } catch (e: Exception) {
@@ -269,8 +219,8 @@ class FormRepository(private val apiService: ApiService) {
         return withContext(Dispatchers.IO) {
             try {
                 val response = apiService.getFavoriteForms()
-                if (response.isSuccessful && response.body() != null) {
-                    Result.success(response.body()!!)
+                if (response.isSuccessful) {
+                    Result.success(response.body() ?: emptyList())
                 } else {
                     Result.failure(IOException("API Error: ${response.code()} - Gagal memuat favorit"))
                 }
@@ -309,6 +259,4 @@ class FormRepository(private val apiService: ApiService) {
             }
         }
     }
-
-
 }

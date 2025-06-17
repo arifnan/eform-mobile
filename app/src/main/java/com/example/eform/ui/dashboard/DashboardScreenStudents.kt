@@ -2,6 +2,7 @@ package com.example.eform.ui.dashboard
 
 import android.app.Application
 import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,18 +21,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import coil.compose.AsyncImage
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.components.SimpleBottomNavigationBarStudents
 import com.example.eform.ui.viewmodel.DashboardStudentsViewModel
 import com.example.eform.ui.viewmodel.FormCodeValidationResult
 import com.example.eform.ui.viewmodel.StudentDashboardUiState
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreenStudents(
     navController: NavController,
@@ -46,44 +48,48 @@ fun DashboardScreenStudents(
         dashboardStudentsViewModel.loadStudentDashboardData()
     }
 
-    // ========== PERUBAHAN UTAMA ADA DI SINI ==========
-    // Kita akan mengecek state di level paling atas
     when (val state = uiState) {
         is StudentDashboardUiState.Loading, StudentDashboardUiState.Idle -> {
-            // Tampilkan layar loading penuh
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator()
             }
         }
         is StudentDashboardUiState.Error -> {
-            // Tampilkan pesan error
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(state.message, color = MaterialTheme.colorScheme.error)
+            Box(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(state.message, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(onClick = { dashboardStudentsViewModel.loadStudentDashboardData() }) {
+                        Text("Coba Lagi")
+                    }
+                }
             }
         }
         is StudentDashboardUiState.Success -> {
-            // Jika sudah sukses, baru kita bangun seluruh UI utama
             DashboardStudentsContent(
                 navController = navController,
                 userIdentifier = userIdentifier,
-                state = state, // Teruskan state sukses ke konten
+                state = state,
                 dashboardStudentsViewModel = dashboardStudentsViewModel
             )
         }
     }
 }
 
-// Composable baru yang berisi seluruh UI Scaffold
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DashboardStudentsContent(
     navController: NavController,
     userIdentifier: String,
-    state: StudentDashboardUiState.Success, // Menerima state Success
+    state: StudentDashboardUiState.Success,
     dashboardStudentsViewModel: DashboardStudentsViewModel
 ) {
     val context = LocalContext.current
     val formCodeValidationResult by dashboardStudentsViewModel.formCodeValidationResult.collectAsState()
+    val student = state.student // Ambil data siswa dari state
 
     var formCodeInput by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
@@ -109,7 +115,6 @@ private fun DashboardStudentsContent(
 
     Scaffold(
         topBar = {
-            // Nama diambil langsung dari state.student.name, tidak akan ada glitch
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -119,19 +124,35 @@ private fun DashboardStudentsContent(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.AccountCircle,
-                        contentDescription = "Profile",
-                        tint = Color.White,
+                    // ========== PERBAIKAN PROFIL GAMBAR SISWA ==========
+                    Box(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
+                            .background(Color.Gray)
                             .clickable {
                                 navController.navigate(Screen.Profile.route.replace("{userIdentifier}", userIdentifier))
                             }
-                    )
-                    Column(modifier = Modifier.padding(start = 8.dp)) {
-                        Text(text = "Hello, ${state.student.name}", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    ) {
+                        if (student.profilePhotoUrl.isNullOrBlank()) {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = "Profile",
+                                tint = Color.White,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            AsyncImage(
+                                model = student.profilePhotoUrl,
+                                contentDescription = "Foto Profil",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    }
+                    // ===============================================
+                    Column(modifier = Modifier.padding(start = 12.dp)) {
+                        Text(text = "Hello, ${student.name}", color = Color.White, style = MaterialTheme.typography.titleMedium)
                         Text(text = "Welcome back", color = Color.White, style = MaterialTheme.typography.bodySmall)
                     }
                 }
@@ -167,7 +188,7 @@ private fun DashboardStudentsContent(
                 val isValidationLoading = formCodeValidationResult is FormCodeValidationResult.Loading
 
                 Row(
-                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedTextField(
@@ -184,9 +205,10 @@ private fun DashboardStudentsContent(
                         onClick = { dashboardStudentsViewModel.validateFormCode(formCodeInput) },
                         enabled = !isValidationLoading,
                         shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(56.dp)
                     ) {
                         if (isValidationLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
                         } else {
                             Text("Akses")
                         }
@@ -197,10 +219,20 @@ private fun DashboardStudentsContent(
                 Text("Riwayat Formulir Saya:", style = MaterialTheme.typography.titleMedium)
                 Spacer(modifier = Modifier.height(8.dp))
 
-                val filteredItems = state.recentResponses.filter { displayItem ->
-                    displayItem.response.form?.title?.contains(searchQuery, ignoreCase = true) == true ||
-                            displayItem.response.form?.description?.contains(searchQuery, ignoreCase = true) == true
+                val filteredItems by remember(searchQuery, state.recentResponses) {
+                    derivedStateOf {
+                        if (searchQuery.isBlank()) {
+                            state.recentResponses
+                        } else {
+                            state.recentResponses.filter { displayItem ->
+                                val form = displayItem.response.form
+                                form?.title?.contains(searchQuery, ignoreCase = true) == true ||
+                                        form?.description?.contains(searchQuery, ignoreCase = true) == true
+                            }
+                        }
+                    }
                 }
+
                 if (filteredItems.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text(if (searchQuery.isNotBlank()) "Tidak ada riwayat ditemukan." else "Belum ada riwayat pengisian formulir.")
@@ -235,7 +267,7 @@ private fun DashboardStudentsContent(
             }
         },
         bottomBar = {
-            var selectedIndex by remember { mutableIntStateOf(0) }
+            var selectedIndex by remember { mutableStateOf(0) }
             SimpleBottomNavigationBarStudents(
                 selectedIndex = selectedIndex,
                 onItemSelected = { selectedIndex = it },

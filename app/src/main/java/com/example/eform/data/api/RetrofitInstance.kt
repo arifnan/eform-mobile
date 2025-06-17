@@ -2,7 +2,9 @@ package com.example.eform.data.api
 
 import android.content.Context
 import com.example.eform.data.local.UserPreferences // Pastikan path ini benar
+import com.example.eform.data.model.api.HistoryResponseWrapper
 import com.example.eform.utils.Constants
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
@@ -50,6 +52,9 @@ object RetrofitInstance {
             .addInterceptor(authInterceptor)
             .build()
     }
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(HistoryResponseWrapper::class.java, HistoryDeserializer())
+        .create()
 
     val api: ApiService by lazy {
         if (applicationContext == null) {
@@ -58,8 +63,9 @@ object RetrofitInstance {
         Retrofit.Builder()
             .baseUrl(Constants.BASE_URL) // BASE_URL = "https://e-form.ilta-services.tech/api/"
             .client(client)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
             .create(ApiService::class.java)
     }
+
 }

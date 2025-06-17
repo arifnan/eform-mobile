@@ -6,12 +6,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.eform.data.api.RetrofitInstance
-import com.example.eform.data.local.UserPreferences
 import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.model.api.FormResponseApiModel
 import com.example.eform.data.model.api.UserApiModel
 import com.example.eform.data.repository.AuthRepository
 import com.example.eform.data.repository.FormRepository
+import com.example.eform.data.local.UserPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,10 +19,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// Data class baru untuk UI, menggabungkan respons dan status favorit
+// Data class untuk UI, menggabungkan respons dan status favorit
 data class StudentResponseDisplayItem(
     val response: FormResponseApiModel,
-    val isFavorite: Boolean
+    var isFavorite: Boolean // Jadikan var agar bisa diubah
 )
 
 // Sealed class untuk UI State, sekarang membawa data yang tepat
@@ -57,50 +57,49 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
 
     fun loadStudentDashboardData() {
         viewModelScope.launch {
+            // Langsung set ke Loading, UI akan menampilkan CircularProgressIndicator
             _uiState.value = StudentDashboardUiState.Loading
 
             // 1. Ambil data user yang sedang login dari server
             val userResult = authRepository.getAuthenticatedUser()
 
-            userResult.fold(
-                onSuccess = { user ->
-                    // 2. Pastikan yang login adalah siswa
-                    if (user.role?.equals("student", ignoreCase = true) != true) {
-                        _uiState.value = StudentDashboardUiState.Error("Pengguna yang login bukan siswa.")
-                        return@fold
-                    }
+            val user = userResult.getOrNull()
+            if (user == null || !user.role.equals("student", ignoreCase = true)) {
+                _uiState.value = StudentDashboardUiState.Error("Gagal memuat data siswa atau peran tidak valid.")
+                return@launch
+            }
 
-                    // 3. Ambil riwayat dan favorit secara bersamaan untuk efisiensi
-                    val responsesHistoryDeferred = async(Dispatchers.IO) { formRepository.getStudentResponsesHistory() }
-                    val favoriteFormsDeferred = async(Dispatchers.IO) { formRepository.getFavoriteForms() }
+            // 2. Ambil riwayat dan favorit secara bersamaan untuk efisiensi
+            val responsesHistoryDeferred = async(Dispatchers.IO) { formRepository.getStudentResponsesHistory() }
+            val favoriteFormsDeferred = async(Dispatchers.IO) { formRepository.getFavoriteForms() }
 
-                    val responsesHistoryResult = responsesHistoryDeferred.await()
-                    val favoriteFormsResult = favoriteFormsDeferred.await()
+            val responsesHistoryResult = responsesHistoryDeferred.await()
+            val favoriteFormsResult = favoriteFormsDeferred.await()
 
-                    // 4. Proses data jika semua panggilan API berhasil
-                    if (responsesHistoryResult.isSuccess && favoriteFormsResult.isSuccess) {
-                        val responses = responsesHistoryResult.getOrNull() ?: emptyList()
-                        val favoriteForms = favoriteFormsResult.getOrNull() ?: emptyList()
-                        val favoriteFormIds = favoriteForms.map { it.id }.toSet()
+            // Cek jika ada yang gagal, cukup satu yang gagal untuk menampilkan error
+            if (responsesHistoryResult.isFailure || favoriteFormsResult.isFailure) {
+                val errorMsg = responsesHistoryResult.exceptionOrNull()?.message
+                    ?: favoriteFormsResult.exceptionOrNull()?.message
+                    ?: "Terjadi kesalahan tidak diketahui."
+                _uiState.value = StudentDashboardUiState.Error(errorMsg)
+                return@launch
+            }
 
-                        // 5. Gabungkan data menjadi satu list untuk ditampilkan
-                        val displayList = responses.map { response ->
-                            StudentResponseDisplayItem(
-                                response = response,
-                                isFavorite = favoriteFormIds.contains(response.form?.id)
-                            )
-                        }
+            // Jika keduanya sukses (meskipun datanya kosong)
+            val responses = responsesHistoryResult.getOrThrow()
+            val favoriteForms = favoriteFormsResult.getOrThrow()
+            val favoriteFormIds = favoriteForms.map { it.id }.toSet()
 
-                        // 6. Kirim state Success dengan semua data yang sudah siap
-                        _uiState.value = StudentDashboardUiState.Success(user, displayList)
-                    } else {
-                        _uiState.value = StudentDashboardUiState.Error("Gagal memuat data riwayat atau favorit.")
-                    }
-                },
-                onFailure = { error ->
-                    _uiState.value = StudentDashboardUiState.Error(error.message ?: "Gagal memuat data pengguna.")
-                }
-            )
+            // 3. Gabungkan data menjadi satu list untuk ditampilkan
+            val displayList = responses.map { response ->
+                StudentResponseDisplayItem(
+                    response = response,
+                    isFavorite = favoriteFormIds.contains(response.form?.id)
+                )
+            }
+
+            // 4. Kirim state Success dengan semua data yang sudah siap
+            _uiState.value = StudentDashboardUiState.Success(user, displayList)
         }
     }
 
@@ -123,7 +122,6 @@ class DashboardStudentsViewModel(application: Application) : AndroidViewModel(ap
             }
         }
     }
-
 
     fun validateFormCode(formCode: String) {
         viewModelScope.launch {
