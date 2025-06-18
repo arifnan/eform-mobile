@@ -4,7 +4,10 @@ import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -105,12 +108,32 @@ fun PreviewFormScreen(
                                             Icon(Icons.Default.ContentCopy, "Salin Kode")
                                         }
                                     }
-                                    Divider()
+                                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                                    // --- PERUBAHAN DI SINI ---
+                                    Text("Link Akses:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text("Link Akses:", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                            Text(accessLink, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
-                                        }
+                                        // --- PERUBAHAN UTAMA DI SINI ---
+                                        Text(
+                                            text = accessLink, // Variabel yang berisi "eformapp://openform/..."
+                                            style = MaterialTheme.typography.bodyLarge.copy( // Gunakan style yang sesuai
+                                                color = MaterialTheme.colorScheme.primary, // Memberi warna biru khas link
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { // Menambahkan aksi klik pada teks
+                                                    // Intent untuk membuka URI custom Anda
+                                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(accessLink))
+                                                    try {
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "Gagal membuka link.", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                            maxLines = 2
+                                        )
+                                        // Tombol salin tetap sama
                                         IconButton(onClick = {
                                             val clip = ClipData.newPlainText("Access Link", accessLink)
                                             clipboardManager.setPrimaryClip(clip)

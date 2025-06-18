@@ -16,12 +16,17 @@ sealed class Screen(val route: String) {
     object Profile : Screen("profile/{userIdentifier}") // Untuk Guru dan Murid
     object Notification : Screen("notification/{userIdentifier}") // Untuk Guru dan Murid
     object Role : Screen("role")
-    object LoginStudents : Screen("loginstudents") // Untuk Murid
+    object LoginStudents : Screen("loginstudents?formCode={formCode}") {
+        fun createRoute(formCode: String? = null): String {
+            return if (formCode != null) "loginstudents?formCode=$formCode" else "loginstudents"
+        }
+    }
     object RegisterStudents : Screen("registerstudents") // Untuk Murid
     object PreviewForm : Screen("preview_form/{formId}")
     object ResponseList : Screen("response_list/{formId}/{formTitle}") // Untuk daftar respons
     object FormResponseDetail : Screen("form_response_detail/{responseId}") // Untuk detail respons
     object ResponseDetail : Screen("response_detail/{responseId}")
+
 }
 
 

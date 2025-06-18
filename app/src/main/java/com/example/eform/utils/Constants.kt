@@ -2,9 +2,10 @@ package com.example.eform.utils
 
 object Constants {
     const val BASE_URL = "https://e-form.ilta-services.tech/api/"
-    const val APP_DEEP_LINK_SCHEME = "eformapp"
-    const val APP_DEEP_LINK_HOST = "openform"
-
+//    const val APP_DEEP_LINK_SCHEME = "eformapp"
+//    const val APP_DEEP_LINK_HOST = "openform"
+    const val APP_DEEP_LINK_SCHEME = "https"
+    const val APP_DEEP_LINK_HOST = "e-form.ilta-services.tech"
     // Tambahkan konstanta untuk validasi lokasi
     const val LOCATION_VALIDATION_RADIUS_METERS = 100.0
     // Contoh target lokasi default (misalnya, titik tengah area sekolah/kantor)

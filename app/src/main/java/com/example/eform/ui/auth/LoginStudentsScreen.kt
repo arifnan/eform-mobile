@@ -16,16 +16,19 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
+import com.example.eform.data.database.AppDatabase
 import com.example.eform.data.model.LoginRequest
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.theme.EformTheme
 import com.example.eform.ui.viewmodel.AuthResult
 import com.example.eform.ui.viewmodel.AuthViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginStudentsScreen(
     navController: NavController,
+    formCode: String?,
     onLoginSuccess: (String) -> Unit,
     authViewModel: AuthViewModel = viewModel(
         factory = AuthViewModel.AuthViewModelFactory(LocalContext.current.applicationContext as Application)
@@ -38,6 +41,10 @@ fun LoginStudentsScreen(
     val loginResult by authViewModel.loginResult.collectAsState()
     val isLoading = loginResult is AuthResult.Loading
 
+    val db = AppDatabase.getDatabase(context)
+    val formDao = db.formDao()
+    val coroutineScope = rememberCoroutineScope()
+
     // This LaunchedEffect will now handle the delay
     LaunchedEffect(loginResult) {
         when (val result = loginResult) {
@@ -46,7 +53,32 @@ fun LoginStudentsScreen(
                     Toast.makeText(context, "Login Berhasil!", Toast.LENGTH_SHORT).show()
                     val userIdentifier = result.authResponse.user.email
                     onLoginSuccess(userIdentifier)
-
+                    if (formCode != null) {
+                        coroutineScope.launch {
+                            val form = formDao.getFormByCode(formCode)
+                            if (form != null) {
+                                // Jika form ditemukan, langsung navigasi ke FormAnswerScreen
+                                navController.navigate(
+                                    Screen.FormAnswer.route
+                                        .replace("{formId}", "${form.id}")
+                                        .replace("{userIdentifier}", userIdentifier)
+                                ) {
+                                    popUpTo(Screen.LoginStudents.route) { inclusive = true }
+                                }
+                            } else {
+                                // Jika form tidak ditemukan, navigasi ke dashboard biasa
+                                Toast.makeText(context, "Form dari link tidak ditemukan, mengarahkan ke beranda.", Toast.LENGTH_LONG).show()
+                                navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
+                                    popUpTo(Screen.LoginStudents.route) { inclusive = true }
+                                }
+                            }
+                        }
+                    } else {
+                        // Alur login normal (tanpa deep link)
+                        navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
+                            popUpTo(Screen.LoginStudents.route) { inclusive = true }
+                        }
+                    }
                     // Delay for 1 second after login is successful
                     delay(100)
 
@@ -125,10 +157,10 @@ fun LoginStudentsScreen(
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun LoginStudentsScreenPreview() {
-    EformTheme {
-        LoginStudentsScreen(navController = rememberNavController(), onLoginSuccess = {})
-    }
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun LoginStudentsScreenPreview() {
+//    EformTheme {
+//        LoginStudentsScreen(navController = rememberNavController(), onLoginSuccess = {}, formCode = ())
+//    }
+//}

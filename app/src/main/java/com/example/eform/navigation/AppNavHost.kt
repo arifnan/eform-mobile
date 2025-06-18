@@ -76,9 +76,17 @@ fun AppNavHost(
                 authViewModel = viewModel(factory = authViewModelFactory)
             )
         }
-        composable(Screen.LoginStudents.route) {
+        composable(
+            route = Screen.LoginStudents.route, // "loginstudents?formCode={formCode}"
+            arguments = listOf(navArgument("formCode") {
+                type = NavType.StringType
+                nullable = true // Jadikan argumen ini opsional
+            })
+        ) { backStackEntry ->
+            val formCodeFromLink = backStackEntry.arguments?.getString("formCode")
             LoginStudentsScreen(
                 navController = navController,
+                formCode = formCodeFromLink, // Teruskan formCode ke layar login
                 onLoginSuccess = onLoginSuccess,
                 authViewModel = viewModel(factory = authViewModelFactory)
             )

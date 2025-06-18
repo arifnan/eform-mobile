@@ -65,10 +65,11 @@ class FormAnswerViewModel(application: Application) : AndroidViewModel(applicati
 
     // Daftar lokasi sekolah yang diizinkan (hardcoded)
     private val allowedSchoolLocations = listOf(
-        SchoolLocation(name = "SMA Negeri 7 Lhokseumawe", coordinate = LatLng(5.1836, 97.1443), radius = 200.0), // Koordinat dari file Anda
-        SchoolLocation(name = "SMA Negeri 5 Lhokseumawe", coordinate = LatLng(5.1768, 97.1438)), // Koordinat perkiraan
-        SchoolLocation(name = "SMA Negeri 6 Lhokseumawe", coordinate = LatLng(5.1700, 97.1500)),  // Koordinat perkiraan
-        SchoolLocation(name = "Lokasi Testing Anda", coordinate = LatLng(3.579741, 98.621874), radius = 200.0)
+        SchoolLocation(name = "SMA Negeri 7 Lhokseumawe", coordinate = LatLng(5.22308, 97.05332), radius = 300.0), // Koordinat dari file Anda
+        SchoolLocation(name = "SMA Negeri 5 Lhokseumawe", coordinate = LatLng(5.173443, 97.123116), radius = 300.0), // Koordinat perkiraan
+        SchoolLocation(name = "SMA Negeri 6 Lhokseumawe", coordinate = LatLng(5.11940, 97.17401), radius = 300.0),  // Koordinat perkiraan
+        SchoolLocation(name = "Lokasi Testing Rumah", coordinate = LatLng(3.579741, 98.621874), radius = 300.0),
+        SchoolLocation(name = "Lokasi Testing Kost", coordinate = LatLng(5.211149, 97.08079), radius = 300.0)
     )
 
     // Fungsi untuk memvalidasi lokasi (TIDAK PERLU PARAMETER LAGI)
