@@ -70,7 +70,7 @@ fun OnboardingScreen(navController: NavController) {
         // Skip Button
         TextButton(
             onClick = {
-                navController.navigate(Screen.Role.route) {
+                navController.navigate(Screen.Login.route) {
                     popUpTo(Screen.Onboarding.route) { inclusive = true }
                 }
             },

@@ -1,4 +1,3 @@
-// File: com/example/eform/ui/auth/LoginScreen.kt
 package com.example.eform.ui.auth
 
 import android.app.Application
@@ -17,48 +16,87 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
-import com.example.eform.data.model.LoginRequest // Pastikan ini diimpor
+import com.example.eform.data.model.LoginRequest
+import com.example.eform.data.database.AppDatabase
 import com.example.eform.navigation.Screen
 import com.example.eform.ui.theme.EformTheme
 import com.example.eform.ui.viewmodel.AuthResult
 import com.example.eform.ui.viewmodel.AuthViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     navController: NavController,
     onLoginSuccess: (String) -> Unit,
+    formCode: String? = null, // Added formCode parameter for deep linking
     authViewModel: AuthViewModel = viewModel(
         factory = AuthViewModel.AuthViewModelFactory(LocalContext.current.applicationContext as Application)
     )
 ) {
     val context = LocalContext.current
-    var nipOrEmail by remember { mutableStateOf("") }
+    var emailOrNip by remember { mutableStateOf("") } // Unified input for email or NIP
     var password by remember { mutableStateOf("") }
 
     val loginResult by authViewModel.loginResult.collectAsState()
     val isLoading = loginResult is AuthResult.Loading
+
+    val db = AppDatabase.getDatabase(context)
+    val formDao = db.formDao()
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(loginResult) {
         when (val result = loginResult) {
             is AuthResult.Success -> {
                 if (result.authResponse.user.role.equals("teacher", ignoreCase = true)) {
                     Toast.makeText(context, "Login Guru Berhasil! Selamat datang ${result.authResponse.user.name}", Toast.LENGTH_SHORT).show()
-                    val userIdentifier = result.authResponse.user.nip ?: result.authResponse.user.email // Prioritaskan NIP untuk guru
-                    onLoginSuccess(userIdentifier) // Callback ke MainActivity
+                    val userIdentifier = result.authResponse.user.nip ?: result.authResponse.user.email // Prioritize NIP for teacher
+                    onLoginSuccess(userIdentifier)
                     navController.navigate(Screen.Dashboard.route.replace("{userIdentifier}", userIdentifier)) {
                         popUpTo(Screen.Login.route) { inclusive = true }
+                        launchSingleTop = true
                     }
-                } else {
-                    Toast.makeText(context, "Akun ini bukan akun guru. Silakan login sebagai siswa.", Toast.LENGTH_LONG).show()
-                    authViewModel.logout() // Logout jika peran salah
+                } else if (result.authResponse.user.role.equals("student", ignoreCase = true)) {
+                    Toast.makeText(context, "Login Siswa Berhasil! Selamat datang ${result.authResponse.user.name}", Toast.LENGTH_SHORT).show()
+                    val userIdentifier = result.authResponse.user.email
+                    onLoginSuccess(userIdentifier)
+                    if (formCode != null) {
+                        coroutineScope.launch {
+                            val form = formDao.getFormByCode(formCode)
+                            if (form != null) {
+                                navController.navigate(
+                                    Screen.FormAnswer.route
+                                        .replace("{formId}", "${form.id}")
+                                        .replace("{userIdentifier}", userIdentifier)
+                                ) {
+                                    popUpTo(Screen.Login.route) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                Toast.makeText(context, "Form from link not found, redirecting to student dashboard.", Toast.LENGTH_LONG).show()
+                                navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
+                                    popUpTo(Screen.Login.route) { inclusive = true }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    } else {
+                        navController.navigate(Screen.DashboardStudents.route.replace("{userIdentifier}", userIdentifier)) {
+                            popUpTo(Screen.Login.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                } else { // Unknown role
+                    Toast.makeText(context, "Login failed: Unknown user role.", Toast.LENGTH_LONG).show()
+                    authViewModel.logout()
                 }
                 authViewModel.resetLoginResult()
             }
             is AuthResult.Error -> {
-                Toast.makeText(context, "Login Gagal: ${result.message}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Login Failed: ${result.message}", Toast.LENGTH_LONG).show()
                 authViewModel.resetLoginResult()
             }
-            else -> { /* Idle atau Loading */ }
+            else -> { /* Idle or Loading */ }
         }
     }
 
@@ -70,13 +108,13 @@ fun LoginScreen(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text("Login Guru", style = MaterialTheme.typography.headlineMedium)
+        Text("Login", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(24.dp))
 
         OutlinedTextField(
-            value = nipOrEmail,
-            onValueChange = { nipOrEmail = it },
-            label = { Text("NIP atau Email") },
+            value = emailOrNip,
+            onValueChange = { emailOrNip = it },
+            label = { Text("Email or NIP") }, // Changed label for unified input
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             readOnly = isLoading
@@ -95,16 +133,16 @@ fun LoginScreen(
 
         Button(
             onClick = {
-                if (nipOrEmail.isNotBlank() && password.isNotBlank()) {
+                if (emailOrNip.isNotBlank() && password.isNotBlank()) {
                     authViewModel.login(
                         LoginRequest(
-                            email = nipOrEmail, // Backend akan handle jika ini NIP atau Email
+                            email = emailOrNip, // Send unified input as email, backend handles NIP/email check
                             password = password,
-                            role = "teacher" // <-- KIRIM ROLE "teacher"
+                            role = null // Remove or comment out this line to send null role or omit it
                         )
                     )
                 } else {
-                    Toast.makeText(context, "NIP/Email dan Password tidak boleh kosong", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Email/NIP and Password cannot be empty", Toast.LENGTH_SHORT).show()
                 }
             },
             enabled = !isLoading,
@@ -117,20 +155,16 @@ fun LoginScreen(
             }
         }
         Spacer(modifier = Modifier.height(12.dp))
-        TextButton(onClick = {
-            if (!isLoading) navController.navigate(Screen.Register.route)
-        }) {
-            Text("Belum punya akun? Daftar sebagai Guru")
-        }
+        // Removed registration buttons as per request. Registration will be handled elsewhere.
         Spacer(modifier = Modifier.height(8.dp))
         TextButton(onClick = {
             if(!isLoading) {
-                navController.navigate(Screen.Role.route){
-                    popUpTo(Screen.Login.route){ inclusive = true}
+                navController.navigate(Screen.Onboarding.route){ // Changed to Onboarding as RoleSelection is removed
+                    popUpTo(Screen.Login.route){ inclusive = true }
                 }
             }
         }) {
-            Text("Kembali ke Pemilihan Peran")
+            Text("Back to Onboarding")
         }
     }
 }
@@ -139,6 +173,6 @@ fun LoginScreen(
 @Composable
 fun LoginScreenPreview() {
     EformTheme {
-        LoginScreen(navController = rememberNavController(), onLoginSuccess = {})
+        LoginScreen(navController = rememberNavController(), onLoginSuccess = {}, formCode = null)
     }
 }

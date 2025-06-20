@@ -25,17 +25,17 @@ class AuthRepository(
     private val userPreferences: UserPreferences
 ) {
 
-    // Fungsi helper untuk parsing error body
+    // Helper function for parsing error body
     private fun parseErrorResponse(errorBodyString: String?): String {
-        if (errorBodyString == null) return "Terjadi kesalahan yang tidak diketahui."
+        if (errorBodyString == null) return "An unknown error occurred."
         return try {
             val gson = Gson()
             val errorResponse = gson.fromJson(errorBodyString, ErrorResponse::class.java)
             errorResponse.getFirstErrorMessage()
         } catch (e: Exception) {
-            // Jika parsing gagal, coba kembalikan string error body mentah (sebagai fallback)
-            // atau pesan default yang lebih baik
-            errorBodyString // atau "Gagal memproses pesan error dari server."
+            // If parsing fails, try to return the raw error body string (as fallback)
+            // or a better default message
+            errorBodyString // or "Failed to process error message from server."
         }
     }
 
@@ -50,17 +50,17 @@ class AuthRepository(
                     Result.success(response.body()!!)
                 } else {
                     val errorMsgJson = response.errorBody()?.string()
-                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Gunakan parser
-                    Result.failure(IOException(readableErrorMsg)) // <-- Hanya pesan yang sudah diparsing
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Use parser
+                    Result.failure(IOException(readableErrorMsg)) // <-- Only the parsed message
                 }
             } catch (e: HttpException) {
-                Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e))
+                Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e))
             }
             catch (e: IOException) {
-                Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e))
+                Result.failure(IOException("Cannot connect to server. Check your internet connection.", e))
             }
             catch (e: Exception) {
-                Result.failure(IOException("Terjadi kesalahan: ${e.message}", e))
+                Result.failure(IOException("An error occurred: ${e.message}", e))
             }
         }
     }
@@ -68,13 +68,8 @@ class AuthRepository(
     suspend fun register(registerRequest: RegisterRequest): Result<AuthResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val response: Response<AuthResponse> = if (registerRequest.role.equals("teacher", ignoreCase = true)) {
-                    apiService.registerTeacher(registerRequest)
-                } else if (registerRequest.role.equals("student", ignoreCase = true)) {
-                    apiService.registerStudent(registerRequest)
-                } else {
-                    return@withContext Result.failure(IllegalArgumentException("Peran pengguna tidak valid untuk registrasi: ${registerRequest.role}"))
-                }
+                // Removed role-specific register calls. Assuming a single register endpoint now.
+                val response: Response<AuthResponse> = apiService.registerUser(registerRequest)
 
                 if (response.isSuccessful && response.body() != null) {
                     response.body()!!.token.let { token ->
@@ -83,22 +78,22 @@ class AuthRepository(
                     Result.success(response.body()!!)
                 } else {
                     val errorMsgJson = response.errorBody()?.string()
-                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Gunakan parser
-                    Result.failure(IOException(readableErrorMsg)) // <-- Hanya pesan yang sudah diparsing
+                    val readableErrorMsg = parseErrorResponse(errorMsgJson) // <-- Use parser
+                    Result.failure(IOException(readableErrorMsg)) // <-- Only the parsed message
                 }
             } catch (e: HttpException) {
-                Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e))
+                Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e))
             }
             catch (e: IOException) {
-                Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e))
+                Result.failure(IOException("Cannot connect to server. Check your internet connection.", e))
             }
             catch (e: Exception) {
-                Result.failure(IOException("Terjadi kesalahan: ${e.message}", e))
+                Result.failure(IOException("An error occurred: ${e.message}", e))
             }
         }
     }
 
-    // ... (method logoutUser, getAuthenticatedUser, getAuthToken, updateUserProfile tetap sama)
+    // ... (method logoutUser, getAuthenticatedUser, getAuthToken, updateUserProfile remain the same)
     suspend fun logout(): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
@@ -124,9 +119,9 @@ class AuthRepository(
                     if (response.code() == 401) userPreferences.clearToken()
                     Result.failure(IOException(readableErrorMsg))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e)) }
-            catch (e: Exception) { Result.failure(IOException("Terjadi kesalahan: ${e.message}", e)) }
+            } catch (e: HttpException) { Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e)) }
+            catch (e: IOException) { Result.failure(IOException("Cannot connect to server. Check your internet connection.", e)) }
+            catch (e: Exception) { Result.failure(IOException("An error occurred: ${e.message}", e)) }
         }
     }
 
@@ -170,9 +165,9 @@ class AuthRepository(
                     val readableErrorMsg = parseErrorResponse(errorMsgJson)
                     Result.failure(IOException(readableErrorMsg))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Kesalahan jaringan (HTTP ${e.code()}): ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Tidak dapat terhubung ke server. Periksa koneksi internet Anda.", e)) }
-            catch (e: Exception) { Result.failure(IOException("Terjadi kesalahan: ${e.message}", e)) }
+            } catch (e: HttpException) { Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e)) }
+            catch (e: IOException) { Result.failure(IOException("Cannot connect to server. Check your internet connection.", e)) }
+            catch (e: Exception) { Result.failure(IOException("An error occurred: ${e.message}", e)) }
         }
     }
 }

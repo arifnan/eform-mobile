@@ -136,4 +136,6 @@ dependencies {
 
     //gson
     implementation(libs.converter.gson)
+
+    implementation(libs.accompanist.permissions)
 }

@@ -234,7 +234,7 @@ fun ProfileScreen(
                     Button(
                         onClick = {
                             authViewModel.logout()
-                            navController.navigate(Screen.Role.route) {
+                            navController.navigate(Screen.Onboarding.route) { // Changed from Screen.Role.route
                                 popUpTo(navController.graph.startDestinationId) { inclusive = true }
                                 launchSingleTop = true
                             }

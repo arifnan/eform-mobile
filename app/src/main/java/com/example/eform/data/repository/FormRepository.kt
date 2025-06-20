@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
@@ -85,24 +86,22 @@ class FormRepository(private val apiService: ApiService) {
     }
 
     suspend fun submitFormResponse(
-        formId: Int,
-        answers: List<AnswerPayload>,
-        photoFile: File?,
-        latitude: Double?,
-        longitude: Double?
+        formId: RequestBody, // Mengubah tipe menjadi RequestBody
+        latitude: RequestBody?, // Mengubah tipe menjadi RequestBody
+        longitude: RequestBody?, // Mengubah tipe menjadi RequestBody
+        answersJson: RequestBody, // Mengubah tipe menjadi RequestBody (JSON string)
+        photo: MultipartBody.Part? // Mengubah tipe menjadi MultipartBody.Part
     ): Result<FormResponseApiModel> {
         return withContext(Dispatchers.IO) {
             try {
                 val formIdRb = formId.toString().toRequestBody("text/plain".toMediaTypeOrNull())
-                val answersJson = Gson().toJson(answers)
-                val answersRb = answersJson.toRequestBody("application/json".toMediaTypeOrNull())
-                val latitudeRb = latitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val longitudeRb = longitude?.toString()?.toRequestBody("text/plain".toMediaTypeOrNull())
-                var photoPart: MultipartBody.Part? = null
-                photoFile?.let {
-                    val photoFileRb = it.asRequestBody("image/*".toMediaTypeOrNull())
-                    photoPart = MultipartBody.Part.createFormData("photo", it.name, photoFileRb)
-                }
+                val response = apiService.submitFormResponse(
+                    formId = formId,
+                    latitude = latitude,
+                    longitude = longitude,
+                    answersJson = answersJson, // Sekarang sesuai dengan tipe yang diharapkan
+                    +                        photo = photo // Sekarang sesuai dengan tipe yang diharapkan
+                )
 
                 val response = apiService.submitFormResponse(formIdRb, latitudeRb, longitudeRb, answersRb, photoPart)
                 if (response.isSuccessful && response.body() != null) {

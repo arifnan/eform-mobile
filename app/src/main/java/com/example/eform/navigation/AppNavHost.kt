@@ -60,43 +60,24 @@ fun AppNavHost(
         composable(Screen.Onboarding.route) {
             OnboardingScreen(navController)
         }
-        composable(Screen.Role.route) {
-            RoleSelectionScreen(navController)
-        }
-        composable(Screen.Login.route) { // Untuk Guru
-            LoginScreen(
-                navController = navController,
-                onLoginSuccess = onLoginSuccess,
-                authViewModel = viewModel(factory = authViewModelFactory)
-            )
-        }
-        composable(Screen.Register.route) { // Untuk Guru
-            RegisterScreen(
-                navController = navController,
-                authViewModel = viewModel(factory = authViewModelFactory)
-            )
-        }
+        // Unified Login Screen handles both teacher and student login
         composable(
-            route = Screen.LoginStudents.route, // "loginstudents?formCode={formCode}"
+            route = Screen.Login.route, // "login?formCode={formCode}"
             arguments = listOf(navArgument("formCode") {
                 type = NavType.StringType
-                nullable = true // Jadikan argumen ini opsional
+                nullable = true
+                defaultValue = null // Set default value to null
             })
         ) { backStackEntry ->
             val formCodeFromLink = backStackEntry.arguments?.getString("formCode")
-            LoginStudentsScreen(
+            LoginScreen(
                 navController = navController,
-                formCode = formCodeFromLink, // Teruskan formCode ke layar login
                 onLoginSuccess = onLoginSuccess,
+                formCode = formCodeFromLink, // Pass formCode to the unified login screen
                 authViewModel = viewModel(factory = authViewModelFactory)
             )
         }
-        composable(Screen.RegisterStudents.route) {
-            RegisterStudentsScreen(
-                navController = navController,
-                authViewModel = viewModel(factory = authViewModelFactory)
-            )
-        }
+        // Removed Screen.Role, Screen.Register, and Screen.RegisterStudents composable calls
 
         composable(
             route = Screen.Dashboard.route, // "dashboard/{userIdentifier}"
@@ -120,7 +101,7 @@ fun AppNavHost(
         ) { backStackEntry ->
             val userIdentifier = backStackEntry.arguments?.getString("userIdentifier")
             if (userIdentifier.isNullOrBlank()) {
-                LaunchedEffect(Unit) { navController.navigate(Screen.LoginStudents.route) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
+                LaunchedEffect(Unit) { navController.navigate(Screen.Login.createRoute()) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
             } else {
                 DashboardScreenStudents(
                     navController = navController,
@@ -136,7 +117,7 @@ fun AppNavHost(
         ) { backStackEntry ->
             val userIdentifier = backStackEntry.arguments?.getString("userIdentifier")
             if (userIdentifier.isNullOrBlank()) {
-                LaunchedEffect(Unit) { navController.navigate(Screen.Role.route) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
+                LaunchedEffect(Unit) { navController.navigate(Screen.Login.createRoute()) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
             } else {
                 ProfileScreen(
                     navController = navController,
@@ -177,7 +158,7 @@ fun AppNavHost(
                     Text("Error: Sesi guru tidak valid untuk membuat formulir.")
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = {
-                        navController.navigate(Screen.Login.route) {
+                        navController.navigate(Screen.Login.createRoute()) {
                             popUpTo(navController.graph.startDestinationId) { inclusive = true }
                             launchSingleTop = true
                         }
@@ -193,12 +174,12 @@ fun AppNavHost(
         }
 
         composable(
-            route = Screen.HistoryForm.route, // Ini akan menjadi "history_form/{userIdentifier}" JIKA Screen.kt BENAR
+            route = Screen.HistoryForm.route, // This will be "history_form/{userIdentifier}" if Screen.kt is correct
             arguments = listOf(navArgument("userIdentifier") { type = NavType.StringType })
         ) { backStackEntry ->
             val userIdentifier = backStackEntry.arguments?.getString("userIdentifier")
             if (userIdentifier.isNullOrBlank()) {
-                // ... penanganan error ...
+                // ... error handling ...
             } else {
                 HistoryFormScreen(
                     navController = navController,
@@ -215,7 +196,7 @@ fun AppNavHost(
         ) { backStackEntry ->
             val userIdentifier = backStackEntry.arguments?.getString("userIdentifier")
             if (userIdentifier.isNullOrBlank()) {
-                LaunchedEffect(Unit) { navController.navigate(Screen.Role.route) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
+                LaunchedEffect(Unit) { navController.navigate(Screen.Login.createRoute()) { popUpTo(navController.graph.startDestinationId) { inclusive = true }; launchSingleTop = true } }
             } else {
                 FavoriteFormsScreen(
                     navController = navController,
@@ -231,12 +212,12 @@ fun AppNavHost(
         ) { backStackEntry ->
             val formId = backStackEntry.arguments?.getInt("formId") ?: 0
             if (formId == 0) {
-                // Tampilkan pesan error jika formId tidak valid
+                // Show error message if formId is invalid
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("ID Formulir tidak valid.")
+                    Text("Invalid Form ID.")
                 }
             } else {
-                // Berikan ViewModel ke Screen
+                // Provide ViewModel to the Screen
                 PreviewFormScreen(
                     navController = navController,
                     formId = formId,
@@ -257,7 +238,7 @@ fun AppNavHost(
 
             if (formId == 0 || userIdentifier.isNullOrBlank()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Data formulir atau pengguna tidak valid untuk menjawab.")
+                    Text("Form data or user is invalid for answering.")
                 }
             } else {
                 FormAnswerScreen(
@@ -275,7 +256,7 @@ fun AppNavHost(
         ) { backStackEntry ->
             val formId = backStackEntry.arguments?.getInt("formId") ?: 0
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("Halaman Edit Form untuk ID: $formId (Belum diimplementasikan)")
+                Text("Edit Form Page for ID: $formId (Not yet implemented)")
             }
         }
 
@@ -287,7 +268,7 @@ fun AppNavHost(
             )
         ) { backStackEntry ->
             val formId = backStackEntry.arguments?.getInt("formId") ?: 0
-            val formTitle = backStackEntry.arguments?.getString("formTitle") ?: "Respons"
+            val formTitle = backStackEntry.arguments?.getString("formTitle") ?: "Responses"
             ResponseListScreen(
                 navController = navController,
                 formId = formId,
@@ -295,7 +276,7 @@ fun AppNavHost(
             )
         }
 
-        // Rute BARU untuk menampilkan detail satu respons
+        // NEW route for displaying a single response detail
         composable(
             route = Screen.FormResponseDetail.route,
             arguments = listOf(navArgument("responseId") { type = NavType.IntType })
@@ -306,7 +287,6 @@ fun AppNavHost(
                 responseId = responseId
             )
         }
-
 
 
     }

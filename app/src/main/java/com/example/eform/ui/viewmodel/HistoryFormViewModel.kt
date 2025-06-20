@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.example.eform.data.api.RetrofitInstance
 import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.model.api.FormResponseApiModel
-// import com.example.eform.data.model.api.UserApiModel // Tidak digunakan secara langsung di sini
 import com.example.eform.data.repository.AuthRepository
 import com.example.eform.data.repository.FormRepository
 import com.example.eform.data.local.UserPreferences
@@ -55,7 +54,7 @@ class HistoryFormViewModel(application: Application) : AndroidViewModel(applicat
                             },
                             onFailure = { error ->
                                 Log.e("HistoryVM", "Failed to load teacher forms history: ${error.message}")
-                                _uiState.value = HistoryUiState.Error(error.message ?: "Gagal memuat riwayat formulir guru")
+                                _uiState.value = HistoryUiState.Error(error.message ?: "Failed to load teacher form history")
                             }
                         )
                     } else if (user.role.equals("student", ignoreCase = true)) {
@@ -68,17 +67,17 @@ class HistoryFormViewModel(application: Application) : AndroidViewModel(applicat
                             },
                             onFailure = { error ->
                                 Log.e("HistoryVM", "Failed to load student responses history: ${error.message}")
-                                _uiState.value = HistoryUiState.Error(error.message ?: "Gagal memuat riwayat pengisian formulir")
+                                _uiState.value = HistoryUiState.Error(error.message ?: "Failed to load student form history")
                             }
                         )
                     } else {
                         Log.w("HistoryVM", "Unknown user role for history: ${user.role}")
-                        _uiState.value = HistoryUiState.Error("Peran pengguna tidak dikenal untuk memuat riwayat.")
+                        _uiState.value = HistoryUiState.Error("Unknown user role to load history.")
                     }
                 },
                 onFailure = { exception ->
                     Log.e("HistoryVM", "Failed to get authenticated user for history: ${exception.message}")
-                    _uiState.value = HistoryUiState.Error(exception.message ?: "Gagal mendapatkan data pengguna untuk riwayat.")
+                    _uiState.value = HistoryUiState.Error(exception.message ?: "Failed to get user data for history.")
                 }
             )
         }

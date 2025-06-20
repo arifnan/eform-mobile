@@ -16,11 +16,11 @@ import com.example.eform.utils.NotificationHelper
 class MainActivity : ComponentActivity() {
 
     private lateinit var navController: NavHostController
-    private var loggedInUserIdentifier: String? = null // Simpan userIdentifier yang login
+    private var loggedInUserIdentifier: String? = null // Store logged-in user identifier
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        NotificationHelper.createNotificationChannel(applicationContext) // Buat channel notifikasi
+        NotificationHelper.createNotificationChannel(applicationContext) // Create notification channel
 
         setContent {
             EformTheme {
@@ -28,98 +28,97 @@ class MainActivity : ComponentActivity() {
 
                 AppNavHost(
                     navController = navController,
-                    onLoginSuccess = { identifier -> // Callback untuk menyimpan identifier setelah login
+                    onLoginSuccess = { identifier -> // Callback to store identifier after login
                         loggedInUserIdentifier = identifier
                     }
                 )
             }
         }
-        // Tangani intent yang mungkin membuka aplikasi (baik deep link atau notifikasi)
+        // Handle intents that might open the app (deep link or notification)
         handleIntent(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent) // Update intent yang ada di activity
-        // Tangani intent baru jika aplikasi sudah berjalan
+        setIntent(intent) // Update the current intent of the activity
+        // Handle new intent if the app is already running
         handleIntent(intent)
     }
 
     /**
-     * Fungsi pusat untuk menangani semua jenis intent (deep link & notifikasi).
-     * Ini dipanggil di onCreate dan onNewIntent.
+     * Central function to handle all types of intents (deep link & notification).
+     * This is called in onCreate and onNewIntent.
      */
     private fun handleIntent(intent: Intent?) {
         if (intent == null || !::navController.isInitialized) {
             return
         }
 
-        // Prioritaskan penanganan deep link. Jika intent adalah deep link,
-        // fungsi handleDeepLink akan mengembalikan true dan kita tidak perlu lanjut.
+        // Prioritize deep link handling. If the intent is a deep link,
+        // handleDeepLink will return true and we don't need to continue.
         val isDeepLinkHandled = handleDeepLink(intent)
 
         if (!isDeepLinkHandled) {
-            // Jika bukan deep link, coba tangani sebagai intent notifikasi.
+            // If it's not a deep link, try to handle it as a notification intent.
             handleNotificationIntent(intent)
         }
     }
 
     /**
-     * Merevisi logika untuk hanya mem-parsing deep link dan menavigasi
-     * ke layar login siswa dengan membawa 'formCode'. Logika selanjutnya
-     * (setelah login berhasil) akan ditangani oleh LoginStudentsScreen.
+     * Revises the logic to only parse the deep link and navigate
+     * to the unified login screen, carrying the 'formCode'. The subsequent logic
+     * (after successful login) will be handled by LoginScreen.
      *
-     * @return True jika intent berhasil ditangani sebagai deep link, false jika tidak.
+     * @return True if the intent was successfully handled as a deep link, false otherwise.
      */
     private fun handleDeepLink(intent: Intent): Boolean {
         if (intent.action == Intent.ACTION_VIEW) {
             val uri = intent.data
-            // Cek apakah URI cocok dengan skema deep link aplikasi
+            // Check if URI matches the app's deep link scheme
             if (uri != null && uri.scheme == Constants.APP_DEEP_LINK_SCHEME && uri.host == Constants.APP_DEEP_LINK_HOST) {
-                // Ambil segmen terakhir dari path, yaitu kode formulir (contoh: "BRZNXUCO")
+                // Get the last segment of the path, which is the form code (e.g., "BRZNXUCO")
                 val formCode = uri.lastPathSegment
                 if (!formCode.isNullOrEmpty()) {
-                    // Langsung arahkan ke halaman Login Siswa dan sertakan formCode sebagai argumen.
-                    // Screen.LoginStudents.createRoute() adalah fungsi helper yang sudah kita siapkan.
-                    navController.navigate(Screen.LoginStudents.createRoute(formCode)) {
-                        // Hapus semua backstack sebelumnya agar pengguna tidak bisa kembali ke halaman awal
+                    // Directly navigate to the unified Login screen and include the formCode as an argument.
+                    navController.navigate(Screen.Login.createRoute(formCode)) {
+                        // Clear all previous backstack so the user cannot return to the initial screen
                         popUpTo(navController.graph.startDestinationId) { inclusive = true }
                         launchSingleTop = true
                     }
-                    // Kosongkan intent setelah ditangani agar tidak diproses ulang saat activity dibuat ulang (misal: rotasi layar)
+                    // Clear the intent after handling so it's not processed again when the activity is recreated (e.g., screen rotation)
                     setIntent(Intent())
-                    return true // Mengindikasikan deep link telah ditangani
+                    return true // Indicates deep link has been handled
                 }
             }
         }
-        return false // Bukan deep link yang valid
+        return false // Not a valid deep link
     }
 
     /**
-     * Logika untuk menangani intent dari notifikasi. Logika ini dipertahankan
-     * seperti sebelumnya tanpa perubahan.
+     * Logic to handle intent from notification. This logic is kept
+     * as before without changes.
      */
     private fun handleNotificationIntent(intent: Intent) {
         if (intent.hasExtra("target_screen")) {
             val targetScreen = intent.getStringExtra("target_screen")
-            // Cek apakah targetnya adalah halaman notifikasi
-            if (targetScreen == Screen.Notification.route) { // Ini adalah "notification/{userIdentifier}"
+            // Check if the target is the notification page
+            if (targetScreen == Screen.Notification.route) { // This is "notification/{userIdentifier}"
                 if (loggedInUserIdentifier != null) {
-                    // Jika pengguna sudah login, buka halaman notifikasi
+                    // If user is logged in, open notification page
                     navController.navigate(
                         Screen.Notification.route.replace("{userIdentifier}", loggedInUserIdentifier!!)
                     ) {
                         launchSingleTop = true
                     }
                 } else {
-                    // Jika tidak ada user yang login, arahkan ke halaman pemilihan peran
-                    navController.navigate(Screen.Role.route) {
+                    // If no user is logged in, navigate to the unified login page
+                    navController.navigate(Screen.Login.createRoute()) {
                         popUpTo(navController.graph.startDestinationId) { inclusive = true }
                         launchSingleTop = true
                     }
-                    Toast.makeText(this, "Silakan login untuk melihat notifikasi", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Please log in to see notifications", Toast.LENGTH_SHORT).show()
                 }
-                // Hapus extra dari intent agar tidak diproses berulang kali
+                // Remove extra from intent so it's not processed repeatedly
                 intent.removeExtra("target_screen")
             }
         }

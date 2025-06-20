@@ -7,25 +7,6 @@ import androidx.room.Query
 import androidx.room.Update
 import com.example.eform.data.model.UserEntity
 
-//@Dao
-//interface UserDao {
-//    // Menyimpan user baru
-//    @Insert
-//    suspend fun insert(user: UserEntity)
-//
-//    // Mengambil user berdasarkan ID
-//    @Query("SELECT * FROM user WHERE id = :id LIMIT 1")
-//    suspend fun getUserById(id: Int): UserEntity?
-//
-//    // Mengupdate data user
-//    @Update
-//    suspend fun update(user: UserEntity)
-//
-//    // Menghapus user
-//    @Query("DELETE FROM user WHERE id = :id")
-//    suspend fun delete(id: Int)
-//}
-
 @Dao
 interface UserDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
@@ -38,7 +19,7 @@ interface UserDao {
     suspend fun getUserByNip(nip: String): UserEntity?
 
     @Update
-    suspend fun updateUser(user: UserEntity) // Tambahkan fungsi update
+    suspend fun updateUser(user: UserEntity)
 
     @Query("SELECT * FROM users WHERE id = :userId LIMIT 1")
     suspend fun getUserById(userId: Int): UserEntity?

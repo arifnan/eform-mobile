@@ -1,41 +1,38 @@
+// File: app/src/main/java/com/example/eform/ui/form/components/Converters.kt
 package com.example.eform.ui.form.components
 
 import androidx.room.TypeConverter
-import com.example.eform.data.model.QuestionEntity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.util.Date // Import java.util.Date
 
 class Converters {
-
-    // Konversi QuestionType ke String
     @TypeConverter
-    fun fromQuestionList(questionList: List<QuestionEntity>): String {
-        val gson = Gson()
-        return gson.toJson(questionList)
-    }
-
-
-    // Konversi String ke QuestionType
-    @TypeConverter
-    fun toQuestionList(questionString: String): List<QuestionEntity> {
-        val gson = Gson()
-        val listType = object : TypeToken<List<QuestionEntity>>() {}.type
-        return gson.fromJson(questionString, listType)
-    }
-
-    // Mengonversi List<String> menjadi String (JSON format)
-    @TypeConverter
-    fun fromOptions(options: List<String>): String {
-        val gson = Gson()
-        return gson.toJson(options)
-    }
-
-    // Mengonversi String (JSON format) kembali menjadi List<String>
-    @TypeConverter
-    fun toOptions(optionsString: String): List<String> {
-        val gson = Gson()
+    fun fromStringList(value: String?): List<String>? {
+        if (value == null) {
+            return null
+        }
         val listType = object : TypeToken<List<String>>() {}.type
-        return gson.fromJson(optionsString, listType)
+        return Gson().fromJson(value, listType)
     }
 
+    @TypeConverter
+    fun toStringList(list: List<String>?): String? {
+        if (list == null) {
+            return null
+        }
+        return Gson().toJson(list)
+    }
+
+    // --- TAMBAHKAN TYPE CONVERTER UNTUK java.util.Date INI ---
+    @TypeConverter
+    fun fromTimestamp(value: Long?): Date? {
+        return value?.let { Date(it) }
+    }
+
+    @TypeConverter
+    fun dateToTimestamp(date: Date?): Long? {
+        return date?.time
+    }
+    // --- AKHIR PENAMBAHAN ---
 }
