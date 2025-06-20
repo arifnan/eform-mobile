@@ -11,6 +11,8 @@ data class FormApiModel(
     @SerializedName("teacher_id")
     val teacherId: Int,
     @SerializedName("created_at")
+    val locationRequired: Boolean? = false,
+    val photoRequired: Boolean? = false,
     val createdAt: String,
     @SerializedName("updated_at")
     val updatedAt: String,

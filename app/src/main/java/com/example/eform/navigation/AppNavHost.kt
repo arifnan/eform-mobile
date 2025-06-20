@@ -46,7 +46,6 @@ fun AppNavHost(
     val dashboardViewModelFactory = DashboardViewModel.DashboardViewModelFactory(application)
     val dashboardStudentsViewModelFactory = DashboardStudentsViewModel.DashboardStudentsViewModelFactory(application)
     val createFormViewModelFactory = CreateFormViewModel.CreateFormViewModelFactory(application)
-    val formAnswerViewModelFactory = FormAnswerViewModel.FormAnswerViewModelFactory(application)
     val notificationViewModelFactory = NotificationViewModel.NotificationViewModelFactory(application)
     val favoriteFormsViewModelFactory = FavoriteFormsViewModel.FavoriteFormsViewModelFactory(application)
     val profileViewModelFactory = ProfileViewModel.ProfileViewModelFactory(application)
@@ -244,8 +243,7 @@ fun AppNavHost(
                 FormAnswerScreen(
                     navController = navController,
                     formId = formId,
-                    userIdentifier = userIdentifier,
-                    formAnswerViewModel = viewModel(factory = formAnswerViewModelFactory)
+                    userIdentifier = userIdentifier
                 )
             }
         }

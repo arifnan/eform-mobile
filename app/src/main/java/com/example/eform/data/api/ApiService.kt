@@ -130,4 +130,11 @@ interface ApiService {
     // ========== FIX URL HERE ==========
     @DELETE("forms/{id}/favorite")
     suspend fun removeFavorite(@Path("id") formId: Int): Response<Unit>
+
+    data class AnswerPayload(
+        @SerializedName("question_id") val questionId: Int,
+        @SerializedName("answer_text") val answerText: String?,
+        @SerializedName("selected_options") val selectedOptions: String?,
+        @SerializedName("linear_scale_value") val linearScaleValue: Int?
+    )
 }

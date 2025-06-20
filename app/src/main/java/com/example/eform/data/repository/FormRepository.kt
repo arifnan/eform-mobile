@@ -100,10 +100,10 @@ class FormRepository(private val apiService: ApiService) {
                     latitude = latitude,
                     longitude = longitude,
                     answersJson = answersJson, // Sekarang sesuai dengan tipe yang diharapkan
-                    +                        photo = photo // Sekarang sesuai dengan tipe yang diharapkan
+                    photo = photo // Sekarang sesuai dengan tipe yang diharapkan
                 )
 
-                val response = apiService.submitFormResponse(formIdRb, latitudeRb, longitudeRb, answersRb, photoPart)
+
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
                 } else {
