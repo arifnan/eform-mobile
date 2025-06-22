@@ -81,13 +81,10 @@ dependencies {
 
     implementation(libs.androidx.navigation.compose)
     implementation(libs.play.services.maps)
+    implementation(libs.androidx.runtime.livedata.v183)
+    //implementation(libs.androidx.runtime.livedata)
     // implementation(libs.androidx.navigation.runtime.ktx) // Ini biasanya transitif dari navigation.compose
 
-    // Firebase App Distribution Gradle Plugin seharusnya hanya di level project build.gradle
-    // Jika Anda menambahkannya di sini sebagai 'implementation', itu bisa jadi sumber masalah.
-    // Cek apakah 'libs.firebase.appdistribution.gradle' benar-benar library runtime.
-    // Sepertinya ini adalah plugin, bukan library. Hapus jika ini adalah plugin.
-    // implementation(libs.firebase.appdistribution.gradle) // <<< PERIKSA INI
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -98,7 +95,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.androidx.foundation) // Biasanya bagian dari compose.bom atau ui
-
+    implementation("androidx.compose.material:material-icons-extended:1.6.8")
     // Retrofit & Networking
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
@@ -123,16 +120,16 @@ dependencies {
     implementation(libs.animated.navigation.bar)
 
     // Material Icons Extended
-    implementation(libs.androidx.material.icons.extended)
+//    implementation(libs.androidx.material.icons.extended)
 
     // Google Play Services Location
-    implementation("com.google.android.gms:play-services-location:21.3.0") // Gunakan versi terbaru yang stabil
+    implementation(libs.play.services.location) // Gunakan versi terbaru yang stabil
     //kalo mau pake google maps api cloud
     //implementation("com.google.maps.android:maps-compose:4.4.1")
     //implementation("com.google.android.gms:play-services-maps:19.2.0")
 
     // Compose Reorderable (jika masih digunakan)
-    implementation("org.burnoutcrew.composereorderable:reorderable:0.9.6")
+    implementation(libs.reorderable)
 
     //gson
     implementation(libs.converter.gson)

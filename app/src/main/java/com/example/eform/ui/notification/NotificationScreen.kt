@@ -88,7 +88,7 @@ fun NotificationScreen(
 
                         SwipeToDismissBox(
                             state = dismissState,
-                            modifier = Modifier.animateItemPlacement(),
+                            modifier = Modifier.animateItem(),
                             enableDismissFromStartToEnd = true,
                             enableDismissFromEndToStart = true,
                             backgroundContent = {

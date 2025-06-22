@@ -2,7 +2,7 @@ package com.example.eform.ui.form
 
 import android.Manifest
 import android.app.Application
-import android.content.pm.PackageManager
+import android.content.pm.PackageManager // Pastikan ini ada
 import android.net.Uri
 import android.os.Build
 import android.util.Log
@@ -16,15 +16,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Call
+
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.* // Pastikan ini ada
+import androidx.compose.runtime.* // Pastikan ini ada untuk rememberCoroutineScope dan remember
+import androidx.compose.runtime.livedata.observeAsState // Pastikan ini ada untuk observeAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,6 +54,7 @@ import com.example.eform.ui.viewmodel.SubmitFormResult
 import com.example.eform.utils.CameraCaptureHelper
 import com.example.eform.utils.LocationHelper
 import com.example.eform.utils.NotificationHelper
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 
@@ -72,6 +73,8 @@ fun FormAnswerScreen(
     )
 ) {
     val context = LocalContext.current
+
+    val scope = rememberCoroutineScope() // Dipastikan sudah diimpor
     val uiState by formAnswerViewModel.uiState.collectAsState()
     val submitResult by formAnswerViewModel.submitResult.collectAsState()
 
@@ -79,12 +82,10 @@ fun FormAnswerScreen(
     val photoUri by formAnswerViewModel.photoUri.collectAsState()
     val currentPhotoPathFromDraft by formAnswerViewModel.currentPhotoPathFromDraft.collectAsState()
     val currentLocation by formAnswerViewModel.location.collectAsState()
+    val locationStatus by formAnswerViewModel.locationStatus.observeAsState("") // Dipastikan sudah diimpor
 
     val cameraHelper = remember { CameraCaptureHelper(context) }
     val locationHelper = remember { LocationHelper(context) }
-
-    // State untuk memicu peluncuran kamera secara terpisah (jembatan)
-    var pendingCameraLaunchUri by remember { mutableStateOf<Uri?>(null) }
 
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
@@ -100,17 +101,9 @@ fun FormAnswerScreen(
         }
     }
 
-    // LaunchedEffect untuk meluncurkan kamera ketika pendingCameraLaunchUri diatur
-    LaunchedEffect(pendingCameraLaunchUri) {
-        pendingCameraLaunchUri?.let { uri ->
-            cameraLauncher.launch(uri)
-            pendingCameraLaunchUri = null
-        }
-    }
-
-    // --- Permintaan Izin Kamera Manual ---
+    // --- Permintaan Izin Kamera ---
     val cameraPermissions = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             arrayOf(Manifest.permission.CAMERA)
         } else {
             arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
@@ -119,16 +112,22 @@ fun FormAnswerScreen(
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionsGranted ->
-        val allPermissionsGranted = permissionsGranted.all { it.value }
-        if (allPermissionsGranted) {
-            val newPhotoUri = cameraHelper.createImageUri() // Ini akan mengatur URI di helper
-            pendingCameraLaunchUri = newPhotoUri // Atur pendingCameraLaunchUri untuk memicu LaunchedEffect
+        val cameraGranted = permissionsGranted[Manifest.permission.CAMERA] ?: false
+        val writeExternalGranted = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            permissionsGranted[Manifest.permission.WRITE_EXTERNAL_STORAGE] ?: false
+        } else true
+
+        if (cameraGranted && writeExternalGranted) {
+            val newPhotoUri = cameraHelper.createImageUri()
+            newPhotoUri?.let { uri ->
+                cameraLauncher.launch(uri)
+            } ?: Toast.makeText(context, "Gagal menyiapkan URI foto.", Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(context, "Izin kamera diperlukan.", Toast.LENGTH_LONG).show()
         }
     }
 
-    // --- Permintaan Izin Lokasi Manual ---
+    // --- Permintaan Izin Lokasi ---
     val locationPermissions = remember {
         arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -138,9 +137,10 @@ fun FormAnswerScreen(
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionsGranted ->
-        val allPermissionsGranted = permissionsGranted.all { it.value }
-        if (allPermissionsGranted) {
-            formAnswerViewModel.validateLocation() // Panggil ViewModel's validateLocation
+        val fineLocationGranted = permissionsGranted[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseLocationGranted = permissionsGranted[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineLocationGranted || coarseLocationGranted) {
+            formAnswerViewModel.validateLocation()
         } else {
             Toast.makeText(context, "Izin lokasi diperlukan.", Toast.LENGTH_LONG).show()
         }
@@ -182,12 +182,8 @@ fun FormAnswerScreen(
             context, Manifest.permission.ACCESS_COARSE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (!fineLocationGranted && !coarseLocationGranted) {
-            // Jika izin belum diberikan, minta izin saat pertama kali Composisi
-            locationPermissionLauncher.launch(locationPermissions)
-        } else {
-            // Jika izin sudah ada, langsung coba ambil lokasi
-            formAnswerViewModel.validateLocation() // Memanggil ViewModel untuk mengambil dan memvalidasi lokasi
+        if (fineLocationGranted || coarseLocationGranted) {
+            formAnswerViewModel.validateLocation()
         }
     }
 
@@ -265,174 +261,183 @@ fun FormAnswerScreen(
                     }
                 }
 
-                Column(
+                // Perhitungan isLocationValidCalculated
+                val isLocationValidCalculated = remember(currentLocation, form.latitude, form.longitude, form.locationRadius) {
+                    currentLocation != null && form.latitude?.toDoubleOrNull() != null && form.longitude?.toDoubleOrNull() != null && form.locationRadius?.toDoubleOrNull() != null &&
+                            locationHelper.isWithinRadius(
+                                currentLat = currentLocation!!.latitude,
+                                currentLng = currentLocation!!.longitude,
+                                targetLat = form.latitude!!.toDouble(), // Pastikan ini tidak null setelah `toDoubleOrNull()`
+                                targetLng = form.longitude!!.toDouble(), // Pastikan ini tidak null
+                                radiusInMeters = form.locationRadius!!.toDouble() // Pastikan ini tidak null
+                            )
+                }
+
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(paddingValues)
-                        .verticalScroll(rememberScrollState())
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .padding(horizontal = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text(text = form.title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(text = form.description ?: "Tidak ada deskripsi.", style = MaterialTheme.typography.bodyMedium)
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // --- BAGIAN PERTANYAAN FORMULIR (Sesuai SCRIPT A, ini di tengah) ---
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
-                    Text("Pertanyaan Formulir:", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    if (currentQuestions != null) {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 400.dp), // Beri tinggi maksimum agar bisa di-scroll terpisah jika perlu
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            itemsIndexed(currentQuestions) { index, question ->
-                                QuestionInput(
-                                    question = question,
-                                    currentAnswer = answers[question.id] ?: "",
-                                    onAnswerChanged = { newAnswer ->
-                                        formAnswerViewModel.onAnswerChanged(question.id, newAnswer)
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                if (index < currentQuestions.lastIndex) {
-                                    Spacer(Modifier.height(8.dp))
-                                }
-                            }
-                        }
-                    } else {
-                        Text("Pertanyaan tidak tersedia.", style = MaterialTheme.typography.bodyMedium)
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
-                    // --- AKHIR BAGIAN PERTANYAAN FORMULIR ---
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(text = form.title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(text = form.description ?: "Tidak ada deskripsi.", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(24.dp))
 
+                                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                                Text("Pertanyaan Formulir:", style = MaterialTheme.typography.titleMedium)
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                    // --- BAGIAN FOTO & LOKASI (Disesuaikan Posisinya di BAWAH, sesuai permintaan) ---
-                    // Mengikuti struktur dari ui.response.FormAnswerScreen.kt
-                    // Lokasi dan Foto ditempatkan di sini.
-
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
-                    Text("Verifikasi Lokasi", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Display Lokasi dan Status Verifikasi
-                    val isLocationValidCalculated = currentLocation != null && formAnswerViewModel.allowedSchoolLocations.any { school ->
-                        locationHelper.isWithinRadius(
-                            currentLat = currentLocation!!.latitude,
-                            currentLng = currentLocation!!.longitude,
-                            targetLat = school.coordinate.latitude,
-                            targetLng = school.coordinate.longitude,
-                            radiusInMeters = school.radius
-                        )
-                    }
-                    val locationStatusText = if (currentLocation == null) "Lokasi: Belum Terdeteksi"
-                    else "Lokasi: ${currentLocation!!.latitude}, ${currentLocation!!.longitude}"
-                    val locationVerificationText = if (currentLocation == null) "Status: Belum Diambil"
-                    else if (isLocationValidCalculated) "Status: ✅ Valid di area sekolah"
-                    else "Status: ❌ Di luar area sekolah yang diizinkan"
-
-                    Text(locationStatusText, style = MaterialTheme.typography.bodySmall)
-                    Text(
-                        locationVerificationText,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = if (currentLocation == null) Color.Gray
-                            else if (isLocationValidCalculated) Color(0xFF2E7D32) // Hijau tua
-                            else Color.Red
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Tombol Ambil Lokasi
-                    Button(onClick = {
-                        locationPermissionLauncher.launch(locationPermissions) // Meluncurkan permintaan izin
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.LocationOn, "Ambil Lokasi")
-                        Spacer(Modifier.width(8.dp))
-                        Text("Ambil Lokasi")
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Divider(modifier = Modifier.padding(vertical = 16.dp))
-                    Text("Bukti Foto", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Tombol Ambil Foto (Tanpa Permintaan Izin Kamera Eksplisit di sini)
-                    Button(onClick = {
-                        // Panggil createCameraIntent untuk membuat intent dan juga mengatur photoUri di cameraHelper
-                        cameraHelper.createCameraIntent()
-                        // Luncurkan cameraLauncher dengan URI tempat gambar akan disimpan (diambil dari helper)
-                        cameraHelper.photoUri.value?.let { uri -> // Pastikan photoUri di helper sudah diatur dan bukan null
-                            cameraLauncher.launch(uri) // Meluncurkan intent kamera dengan URI sebagai input
-                        } ?: run {
-                            Toast.makeText(context, "Gagal membuat file foto untuk kamera.", Toast.LENGTH_SHORT).show()
-                        }
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.CameraAlt, "Ambil Foto")
-                        Spacer(Modifier.width(8.dp))
-                        Text(if (photoUri == null && currentPhotoPathFromDraft == null) "Ambil Foto" else "Ambil Ulang Foto")
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Tampilan Foto
-                    PhotoDisplay(
-                        photoUri = photoUri,
-                        currentPhotoPath = currentPhotoPathFromDraft,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(Color.LightGray)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    // --- AKHIR BAGIAN FOTO & LOKASI ---
-
-
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    // Tombol Kirim Jawaban
-                    Button(onClick = {
-                        val allQuestionsAnswered = currentQuestions?.all { question ->
-                            val answer = answers[question.id]
-                            if (question.required) {
-                                when (QuestionType.fromString(question.questionType)) {
-                                    QuestionType.Text -> !answer.isNullOrBlank()
-                                    QuestionType.MultipleChoice -> !answer.isNullOrBlank()
-                                    QuestionType.Checkbox -> {
-                                        !answer.isNullOrBlank() && answer != "[]" && answer != "[\"\"]"
+                                if (currentQuestions != null) {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        currentQuestions.forEachIndexed { index, question ->
+                                            QuestionInput(
+                                                question = question,
+                                                currentAnswer = answers[question.id] ?: "",
+                                                onAnswerChanged = { newAnswer ->
+                                                    formAnswerViewModel.onAnswerChanged(question.id, newAnswer)
+                                                },
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                            if (index < currentQuestions.lastIndex) {
+                                                Spacer(Modifier.height(8.dp))
+                                            }
+                                        }
                                     }
-                                    QuestionType.LinearScale -> answer?.toIntOrNull() != null
-                                    QuestionType.true_false -> !answer.isNullOrBlank()
-                                    else -> false
+                                } else {
+                                    Text("Pertanyaan tidak tersedia.", style = MaterialTheme.typography.bodyMedium)
                                 }
-                            } else {
-                                true
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                                Text("Verifikasi Lokasi", style = MaterialTheme.typography.titleMedium)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Text(
+                                    text = "Status Lokasi: $locationStatus",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = when {
+                                            locationStatus.contains("✅") -> Color(0xFF2E7D32)
+                                            locationStatus.contains("❌") -> Color.Red
+                                            else -> Color.Gray
+                                        }
+                                    )
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(onClick = {
+                                    locationPermissionLauncher.launch(locationPermissions)
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.LocationOn, "Ambil Lokasi")
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Ambil Lokasi")
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                                Text("Bukti Foto", style = MaterialTheme.typography.titleMedium)
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                Button(onClick = {
+                                    cameraPermissionLauncher.launch(cameraPermissions)
+                                }, modifier = Modifier.fillMaxWidth()) {
+                                    Icon(Icons.Default.Call, "Ambil Foto")
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(if (photoUri == null && currentPhotoPathFromDraft == null) "Ambil Foto" else "Ambil Ulang Foto")
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                PhotoDisplay(
+                                    photoUri = photoUri,
+                                    currentPhotoPath = currentPhotoPathFromDraft,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color.LightGray)
+                                )
                             }
-                        } ?: false
-
-
-                        val isLocationRequired = form.locationRequired == true
-                        val isPhotoRequired = form.photoRequired == true
-
-                        if (isLocationRequired && currentLocation == null) {
-                            Toast.makeText(context, "Lokasi wajib diisi.", Toast.LENGTH_SHORT).show()
-                        } else if (isLocationRequired && !isLocationValidCalculated) {
-                            Toast.makeText(context, "Lokasi tidak valid atau di luar area yang diizinkan.", Toast.LENGTH_SHORT).show()
-                        } else if (isPhotoRequired && photoUri == null && currentPhotoPathFromDraft == null) {
-                            Toast.makeText(context, "Foto wajib diambil.", Toast.LENGTH_SHORT).show()
-                        } else if (!allQuestionsAnswered) {
-                            Toast.makeText(context, "Harap lengkapi semua pertanyaan wajib (*).", Toast.LENGTH_SHORT).show()
-                        } else {
-                            formAnswerViewModel.submitAnswers(
-                                photoFile = photoFileToSubmit,
-                                currentLocation = currentLocation
-                            )
                         }
-                    }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Kirim Jawaban")
+                    }
+
+                    item {
+                        Button(onClick = {
+                            val allQuestionsAnswered = currentQuestions?.all { question ->
+                                val answer = answers[question.id]
+                                if (question.required) {
+                                    when (QuestionType.fromString(question.questionType)) {
+                                        QuestionType.Text -> !answer.isNullOrBlank()
+                                        QuestionType.MultipleChoice -> !answer.isNullOrBlank()
+                                        QuestionType.Checkbox -> {
+                                            !answer.isNullOrBlank() && answer != "[]" && answer != "[\"\"]"
+                                        }
+                                        QuestionType.LinearScale -> answer?.toIntOrNull() != null
+                                        QuestionType.true_false -> !answer.isNullOrBlank()
+                                        else -> false
+                                    }
+                                } else {
+                                    true
+                                }
+                            } ?: false
+
+                            val isLocationRequired = form.locationRequired == true
+                            val isPhotoRequired = form.photoRequired == true
+
+                            val cameraPermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                            val fineLocationGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                            val coarseLocationGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED // Diperbaiki di sini
+                            val locationPermissionGranted = fineLocationGranted || coarseLocationGranted
+
+
+                            if (isLocationRequired && !locationPermissionGranted) {
+                                Toast.makeText(context, "Akses lokasi diperlukan untuk mengirim jawaban.", Toast.LENGTH_LONG).show()
+                            } else if (isLocationRequired && currentLocation == null) {
+                                Toast.makeText(context, "Lokasi wajib diisi.", Toast.LENGTH_SHORT).show()
+                            } else if (isLocationRequired && !isLocationValidCalculated) {
+                                Toast.makeText(context, "Lokasi tidak valid atau di luar area yang diizinkan.", Toast.LENGTH_SHORT).show()
+                            } else if (isPhotoRequired && !cameraPermissionGranted) {
+                                Toast.makeText(context, "Akses kamera diperlukan untuk mengirim jawaban.", Toast.LENGTH_LONG).show()
+                            } else if (isPhotoRequired && photoUri == null && currentPhotoPathFromDraft == null) {
+                                Toast.makeText(context, "Foto wajib diambil.", Toast.LENGTH_SHORT).show()
+                            } else if (!allQuestionsAnswered) {
+                                Toast.makeText(context, "Harap lengkapi semua pertanyaan wajib (*).", Toast.LENGTH_SHORT).show()
+                            } else {
+                                formAnswerViewModel.submitAnswers(
+                                    photoFile = photoFileToSubmit,
+                                    currentLocation = currentLocation
+                                )
+                            }
+                        }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Kirim Jawaban")
+                        }
+                    }
+                    item {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    form?.let {
+                                        formAnswerViewModel.saveDraft(answers.toMap() as Map<Int, String>, photoUri, it.title) // <-- Perbaikan di sini
+                                        Toast.makeText(context, "Draft disimpan!", Toast.LENGTH_SHORT).show()
+                                    } ?: run {
+                                        Toast.makeText(context, "Gagal menyimpan draft: Formulir tidak dimuat.", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Simpan Draft")
+                        }
                     }
                 }
             }

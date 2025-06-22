@@ -42,6 +42,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
 import androidx.compose.runtime.mutableStateMapOf // Import ini
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 
 // Import AnswerPayload secara eksplisit
 import com.example.eform.data.api.ApiService.AnswerPayload
@@ -91,6 +93,8 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
     val photoUri = MutableStateFlow<Uri?>(null) // URI foto yang diambil (baru atau dari draft)
     val currentPhotoPathFromDraft = MutableStateFlow<String?>(null) // Path foto dari draft (untuk tampilan)
     val location = MutableStateFlow<Location?>(null)
+    private val _locationStatus = MutableLiveData<String>("Belum diverifikasi")
+    val locationStatus: LiveData<String> = _locationStatus
 
     private var currentStudentId: Int? = null
 
@@ -249,20 +253,19 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
                 } else {
                     "❌ Anda berada di luar area sekolah yang diizinkan."
                 }
-                // Update location state with new LatLng, but ensure UI observes `location` StateFlow for lat/lng
+
                 location.value = Location("").apply {
                     this.latitude = lat
                     this.longitude = lng
                 }
-                // Jika Anda ingin menampilkan pesan validasi di UI, _uiState perlu diupdate juga
-                // _uiState.value = FormAnswerUiState.LocationValidationResult(isValid, message, lat, lng)
                 Log.d("FormAnswerVM", "Location validation result: $message")
-                // Toast pesan akan ditampilkan di UI berdasarkan pengamatan perubahan state
+                _locationStatus.value = message // <--- PENTING: PERBARUI LIVEDATA DI SINI
+
             }
             override fun onError(message: String) {
                 location.value = null // Clear location on error
                 Log.e("FormAnswerVM", "Failed to get location: $message")
-                // Toast pesan akan ditampilkan di UI
+                _locationStatus.value = "Gagal mendapatkan lokasi: $message" // <--- PENTING: PERBARUI LIVEDATA UNTUK ERROR
             }
         })
     }

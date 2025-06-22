@@ -11,13 +11,16 @@ data class FormApiModel(
     @SerializedName("teacher_id")
     val teacherId: Int,
     @SerializedName("created_at")
-    val locationRequired: Boolean? = false,
-    val photoRequired: Boolean? = false,
     val createdAt: String,
     @SerializedName("updated_at")
     val updatedAt: String,
     val questions: List<QuestionApiModel>?, // FormResource Anda menyertakan questions with 'whenLoaded'
-    val teacher: UserApiModel? // FormResource Anda menyertakan teacher with 'whenLoaded'
+    val teacher: UserApiModel?, // FormResource Anda menyertakan teacher with 'whenLoaded'
+    @SerializedName("location_required") val locationRequired: Boolean? = false,
+    @SerializedName("photo_required") val photoRequired: Boolean? = false,
+    @SerializedName("location_latitude") val latitude: String? = null,
+    @SerializedName("location_longitude") val longitude: String? = null,
+    @SerializedName("location_radius") val locationRadius: String? = null
 )
 
 // Untuk respons FormController@store
