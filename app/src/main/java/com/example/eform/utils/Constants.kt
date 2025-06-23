@@ -7,7 +7,7 @@ object Constants {
 //    const val APP_DEEP_LINK_HOST = "openform"
     const val APP_DEEP_LINK_SCHEME = "https"
     const val APP_DEEP_LINK_HOST = "e-form.ilta-services.tech"
-    // Tambahkan konstanta untuk validasi lokasi
+    // Tambahkan konstanta untuk validasi    lokasi
     const val LOCATION_VALIDATION_RADIUS_METERS = 100.0
     // Contoh target lokasi default (misalnya, titik tengah area sekolah/kantor)
     // Anda mungkin ingin mengambil target lokasi ini dari server atau konfigurasi lain nantinya.
