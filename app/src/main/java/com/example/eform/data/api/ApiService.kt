@@ -140,4 +140,18 @@ interface ApiService {
 
     @GET("locations")
     suspend fun getLocations(): Response<List<LocationApiModel>>
+
+
+    @FormUrlEncoded
+    @POST("verify-location")
+    suspend fun verifyLocation(
+        @Field("latitude") latitude: Double,
+        @Field("longitude") longitude: Double
+    ): Response<LocationVerificationResponse>
+
+    data class LocationVerificationResponse(
+        val status: String, // "valid" atau "invalid"
+        val message: String,
+        @SerializedName("location_name") val locationName: String? = null
+    )
 }

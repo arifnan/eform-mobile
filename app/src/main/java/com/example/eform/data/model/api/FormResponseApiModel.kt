@@ -18,7 +18,7 @@ data class FormResponseApiModel(
     val submittedAt: String,
     val answers: List<AnswerApiModel>?,
     val student: UserApiModel?,
-    val form: FormApiModel? // <-- TAMBAHKAN FIELD INI
+    val form: FormApiModel?
 )
 
 // AnswerApiModel tetap sama

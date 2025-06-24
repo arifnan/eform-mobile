@@ -14,18 +14,13 @@ import com.example.eform.data.database.AppDatabase
 import com.example.eform.data.local.UserPreferences
 import com.example.eform.data.model.DraftAnswerEntity
 import com.example.eform.data.model.FormDraftEntity
-import com.example.eform.data.model.FormEntity // Digunakan di FormAnswerUiState
 import com.example.eform.data.model.NotificationEntity
-import com.example.eform.data.model.QuestionEntity // Digunakan di FormAnswerUiState
 import com.example.eform.data.model.api.FormApiModel
 import com.example.eform.data.model.api.FormResponseApiModel
-import com.example.eform.data.model.api.QuestionApiModel
-import com.example.eform.data.repository.AuthRepository
 import com.example.eform.data.repository.FormRepository
 import com.example.eform.data.repository.DraftRepository
 import com.example.eform.ui.form.components.QuestionType
 import com.example.eform.utils.LocationHelper
-import com.google.android.gms.maps.model.LatLng
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.Dispatchers
@@ -41,21 +36,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.util.Date
-import androidx.compose.runtime.mutableStateMapOf // Import ini
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
-
-// Import AnswerPayload secara eksplisit
 import com.example.eform.data.api.ApiService.AnswerPayload
-// DITAMBAHKAN: Import untuk model lokasi dari API
-import com.example.eform.data.model.api.LocationApiModel
-
-// DITAMBAHKAN: Data class SchoolLocation tidak lagi diperlukan
-// data class SchoolLocation(
-//     val name: String,
-//     val coordinate: LatLng,
-//     val radius: Double = 150.0
-// )
 
 // Sealed class untuk state UI FormAnswerScreen
 sealed class FormAnswerUiState {
@@ -72,16 +56,17 @@ sealed class SubmitFormResult {
     data class Error(val message: String) : SubmitFormResult()
 }
 
+// Enum untuk status lokasi
 enum class LocationVerificationStatus {
-    IDLE,
-    FETCHING_API, // Mengambil data lokasi dari API
-    VERIFYING,    // Memverifikasi lokasi pengguna
-    VALID,        // Lokasi pengguna valid
-    INVALID,      // Lokasi pengguna tidak valid (di luar radius)
-    API_ERROR,    // Gagal mengambil data dari API
-    GPS_ERROR     // Gagal mendapatkan lokasi GPS pengguna
+    NOT_VERIFIED,
+    VERIFYING,
+    VALID,
+    INVALID,
+    GPS_UNAVAILABLE,
+    API_ERROR
 }
 
+// Wrapper untuk status dan pesan
 data class LocationStatusResult(
     val status: LocationVerificationStatus,
     val message: String
@@ -89,9 +74,8 @@ data class LocationStatusResult(
 
 class FormAnswerViewModel(application: Application, private val formId: Int, private val userIdentifier: String) : AndroidViewModel(application) {
 
-    private val apiService: ApiService = RetrofitInstance.api // DITAMBAHKAN: Inisialisasi ApiService
+    private val apiService: ApiService = RetrofitInstance.api
     private val formRepository: FormRepository = FormRepository(apiService)
-    private val authRepository: AuthRepository = AuthRepository(apiService, UserPreferences(getApplication()))
     private val draftRepository: DraftRepository
     private val userDao = AppDatabase.getDatabase(getApplication()).userDao()
     private val notificationDao = AppDatabase.getDatabase(getApplication()).notificationDao()
@@ -106,51 +90,25 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
     private val _submitResult = MutableStateFlow<SubmitFormResult>(SubmitFormResult.Idle)
     val submitResult: StateFlow<SubmitFormResult> = _submitResult.asStateFlow()
 
-    // Data yang dikelola ViewModel untuk jawaban dan input lainnya
+    // Data yang dikelola ViewModel
     val answers = MutableStateFlow<MutableMap<Int, String>>(mutableStateMapOf())
     val photoUri = MutableStateFlow<Uri?>(null)
     val currentPhotoPathFromDraft = MutableStateFlow<String?>(null)
     val location = MutableStateFlow<Location?>(null)
-    private val _locationStatus = MutableLiveData<LocationStatusResult>(
-        LocationStatusResult(LocationVerificationStatus.IDLE, "Tekan tombol untuk validasi")
+
+    private val _locationStatus = MutableLiveData(
+        LocationStatusResult(LocationVerificationStatus.NOT_VERIFIED, "Anda belum melakukan verifikasi lokasi")
     )
     val locationStatus: LiveData<LocationStatusResult> = _locationStatus
 
     private var currentStudentId: Int? = null
-
-    // DITAMBAHKAN: State untuk menyimpan lokasi dari API
-    private val _apiLocations = MutableStateFlow<List<LocationApiModel>>(emptyList())
-
-    // DIHAPUS: Daftar lokasi sekolah yang hardcoded
-    // val allowedSchoolLocations = listOf( ... )
 
     init {
         val database = AppDatabase.getDatabase(getApplication())
         draftRepository = DraftRepository(database.draftDao())
         loadFormAndDraftDetails()
         loadCurrentUserId()
-        // DITAMBAHKAN: Panggil fungsi untuk mengambil lokasi dari API saat ViewModel dibuat
-        fetchApiLocations()
     }
-
-    // DITAMBAHKAN: Fungsi baru untuk mengambil data lokasi dari API
-    private fun fetchApiLocations() {
-        viewModelScope.launch {
-            _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.FETCHING_API, "Mengambil data lokasi..."))
-            try {
-                val response = apiService.getLocations()
-                if (response.isSuccessful && response.body() != null) {
-                    _apiLocations.value = response.body()!!
-                    _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.IDLE, "Data lokasi siap. Silakan validasi."))
-                } else {
-                    _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.API_ERROR, "Gagal mengambil data lokasi."))
-                }
-            } catch (e: Exception) {
-                _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.API_ERROR, "Gagal koneksi ke server lokasi."))
-            }
-        }
-    }
-
 
     private fun loadCurrentUserId() {
         viewModelScope.launch {
@@ -165,7 +123,6 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
     private fun loadFormAndDraftDetails() {
         viewModelScope.launch {
             _uiState.value = FormAnswerUiState.Loading
-
             val formResult = formRepository.getFormDetails(formId)
             formResult.fold(
                 onSuccess = { formApiModel ->
@@ -188,7 +145,7 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
         viewModelScope.launch {
             val draft = draftRepository.getDraft(formId, userIdentifier)
             if (draft != null) {
-                Log.d("FormAnswerVM", "Draft ditemukan untuk form ${formId} oleh ${userIdentifier}.")
+                Log.d("FormAnswerVM", "Draft ditemukan.")
                 val restoredAnswers = mutableStateMapOf<Int, String>()
                 restoredAnswers.putAll(answers.value)
 
@@ -226,7 +183,6 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
                     currentPhotoPathFromDraft.value = it
                     photoUri.value = Uri.parse(it)
                 }
-
                 Log.d("FormAnswerVM", "Draft loaded. Answers: ${answers.value.toMap()}")
             } else {
                 Log.d("FormAnswerVM", "No draft found for form ${formId} by ${userIdentifier}.")
@@ -236,63 +192,85 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
 
     fun onAnswerChanged(questionId: Int, newAnswer: String) {
         answers.value = answers.value.apply { this[questionId] = newAnswer }
-        Log.d("FormAnswerVM", "Answer for Q${questionId} updated to: $newAnswer")
     }
 
     fun onPhotoUriChanged(uri: Uri?) {
         photoUri.value = uri
         currentPhotoPathFromDraft.value = uri?.toString()
-        Log.d("FormAnswerVM", "Photo URI updated to: $uri")
     }
 
     fun onLocationChanged(loc: Location?) {
         location.value = loc
-        Log.d("FormAnswerVM", "Location updated to: ${loc?.latitude}, ${loc?.longitude}")
     }
 
-    // DIMODIFIKASI: Fungsi ini sekarang memvalidasi lokasi menggunakan data dari API
     fun validateLocation() {
-        if (_apiLocations.value.isEmpty()) {
-            _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.API_ERROR, "Data lokasi belum siap, mencoba lagi..."))
-            fetchApiLocations()
-            return
-        }
-
         _locationStatus.postValue(LocationStatusResult(LocationVerificationStatus.VERIFYING, "Memverifikasi lokasi Anda..."))
 
         locationHelper.getCurrentLocation(object : LocationHelper.LocationCallback {
             override fun onLocationResult(lat: Double, lng: Double) {
-                val validApiLocation = _apiLocations.value.find { apiLoc ->
-                    locationHelper.isWithinRadius(lat, lng, apiLoc.latitude, apiLoc.longitude, apiLoc.radius)
-                }
-
-                location.value = Location("").apply {
+                location.value = Location("user_location").apply {
                     this.latitude = lat
                     this.longitude = lng
                 }
 
-                if (validApiLocation != null) {
-                    // SUKSES: Kirim status VALID dengan pesan yang memuat nama lokasi
-                    _locationStatus.postValue(
-                        LocationStatusResult(LocationVerificationStatus.VALID, "✅ Lokasi Valid: ${validApiLocation.name}")
-                    )
-                } else {
-                    // GAGAL: Kirim status INVALID
-                    _locationStatus.postValue(
-                        LocationStatusResult(LocationVerificationStatus.INVALID, "❌ Anda berada di luar area yang diizinkan.")
-                    )
+                viewModelScope.launch {
+                    try {
+                        // PERBAIKAN: Memanggil fungsi `verifyLocation` sesuai nama di ApiService.kt
+                        val response = apiService.verifyLocation(lat, lng)
+
+                        if (response.isSuccessful && response.body() != null) {
+                            val validationResult = response.body()!!
+                            if (validationResult.status == "valid") {
+                                _locationStatus.postValue(
+                                    LocationStatusResult(
+                                        LocationVerificationStatus.VALID,
+                                        "Lokasi Valid: ${validationResult.locationName}"
+                                    )
+                                )
+                            } else {
+                                _locationStatus.postValue(
+                                    LocationStatusResult(
+                                        LocationVerificationStatus.INVALID,
+                                        validationResult.message
+                                    )
+                                )
+                            }
+                        } else {
+                            // PERBAIKAN: Logika parsing error JSON yang lebih aman
+                            val errorBody = response.errorBody()?.string()
+                            if (errorBody != null) {
+                                val errorMessage = try {
+                                    // Menggunakan data class dari ApiService untuk menghindari ambiguitas
+                                    gson.fromJson(errorBody, ApiService.LocationVerificationResponse::class.java).message
+                                } catch (e: Exception) {
+                                    "Anda berada di luar area yang diperbolehkan"
+                                }
+                                _locationStatus.postValue(
+                                    LocationStatusResult(LocationVerificationStatus.INVALID, errorMessage)
+                                )
+                            } else {
+                                _locationStatus.postValue(
+                                    LocationStatusResult(LocationVerificationStatus.API_ERROR, "Gagal memvalidasi lokasi.")
+                                )
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("FormAnswerVM", "API call for location validation failed", e)
+                        _locationStatus.postValue(
+                            LocationStatusResult(LocationVerificationStatus.API_ERROR, "Gagal terhubung ke server validasi.")
+                        )
+                    }
                 }
             }
 
             override fun onError(message: String) {
                 location.value = null
                 _locationStatus.postValue(
-                    LocationStatusResult(LocationVerificationStatus.GPS_ERROR, "❌ Gagal mendapatkan lokasi: $message")
+                    LocationStatusResult(LocationVerificationStatus.GPS_UNAVAILABLE, "Anda belum menghidupkan lokasi/GPS.")
                 )
             }
         })
     }
-
 
     fun saveDraft(currentAnswersMap: Map<Int, String>, currentPhotoUri: Uri?, currentFormTitle: String) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -391,16 +369,7 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
                 return@launch
             }
 
-            // DIMODIFIKASI: Validasi lokasi sekarang menggunakan data dari API
-            val isLocationValid = currentLocation != null && _apiLocations.value.any { apiLoc ->
-                locationHelper.isWithinRadius(
-                    currentLat = currentLocation.latitude,
-                    currentLng = currentLocation.longitude,
-                    targetLat = apiLoc.latitude,
-                    targetLng = apiLoc.longitude,
-                    radiusInMeters = apiLoc.radius
-                )
-            }
+            val isLocationValid = locationStatus.value?.status == LocationVerificationStatus.VALID
 
             val isAllAnswered = formApiModel.questions?.all { question ->
                 val answer = answers.value[question.id]
@@ -418,12 +387,8 @@ class FormAnswerViewModel(application: Application, private val formId: Int, pri
                 }
             } ?: false
 
-            if (formApiModel.locationRequired == true && currentLocation == null) {
-                _submitResult.value = SubmitFormResult.Error("Lokasi wajib diisi.")
-                return@launch
-            }
             if (formApiModel.locationRequired == true && !isLocationValid) {
-                _submitResult.value = SubmitFormResult.Error("Lokasi tidak valid atau di luar area yang diizinkan.")
+                _submitResult.value = SubmitFormResult.Error("Lokasi tidak valid atau belum diverifikasi.")
                 return@launch
             }
             if (formApiModel.photoRequired == true && photoFile == null && photoUri.value == null && currentPhotoPathFromDraft.value == null) {

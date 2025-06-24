@@ -21,6 +21,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.CheckCircle // Import untuk ikon valid
+import androidx.compose.material.icons.filled.Cancel // Import untuk ikon tidak valid
+import androidx.compose.material.icons.filled.Sync // Import untuk ikon proses
+import androidx.compose.material.icons.filled.HelpOutline // Import untuk ikon bantuan
+import androidx.compose.material.icons.filled.LocationOff // Import untuk ikon GPS mati
+import androidx.compose.material.icons.filled.CloudOff // Import untuk ikon API error
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.livedata.observeAsState
@@ -49,7 +55,8 @@ import com.example.eform.ui.components.StandardTopAppBar
 import com.example.eform.ui.form.components.QuestionType
 import com.example.eform.ui.viewmodel.FormAnswerUiState
 import com.example.eform.ui.viewmodel.FormAnswerViewModel
-import com.example.eform.ui.viewmodel.LocationVerificationStatus // <-- IMPORT BARU
+import com.example.eform.ui.viewmodel.LocationVerificationStatus
+import com.example.eform.ui.viewmodel.LocationStatusResult
 import com.example.eform.ui.viewmodel.SubmitFormResult
 import com.example.eform.utils.CameraCaptureHelper
 import com.example.eform.utils.LocationHelper
@@ -80,15 +87,18 @@ fun FormAnswerScreen(
 
     val answers by formAnswerViewModel.answers.collectAsState()
     val photoUri by formAnswerViewModel.photoUri.collectAsState()
-    val currentPhotoPathFromDraft by formAnswerViewModel.currentPhotoPathFromDraft.collectAsState() // Asumsi ini masih ada di ViewModel Anda
+    val currentPhotoPathFromDraft by formAnswerViewModel.currentPhotoPathFromDraft.collectAsState()
     val currentLocation by formAnswerViewModel.location.collectAsState()
 
-    // PERUBAHAN: Menggunakan enum baru dari ViewModel
-    val locationStatus by formAnswerViewModel.locationStatus.observeAsState(LocationVerificationStatus.IDLE)
+    // Menggunakan LiveData untuk status lokasi yang lebih detail
+    val locationStatusResult by formAnswerViewModel.locationStatus.observeAsState(
+        LocationStatusResult(LocationVerificationStatus.NOT_VERIFIED, "Anda belum melakukan verifikasi lokasi")
+    )
 
     val cameraHelper = remember { CameraCaptureHelper(context) }
-    val locationHelper = remember { LocationHelper(context) } // Tetap digunakan untuk UI jika perlu
+    val locationHelper = remember { LocationHelper(context) }
 
+    // ... (kode launcher kamera dan permission tidak berubah)
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
@@ -103,12 +113,10 @@ fun FormAnswerScreen(
         }
     }
 
-    val cameraPermissions = remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf(Manifest.permission.CAMERA)
-        } else {
-            arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
-        }
+    val cameraPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        arrayOf(Manifest.permission.CAMERA)
+    } else {
+        arrayOf(Manifest.permission.CAMERA, Manifest.permission.WRITE_EXTERNAL_STORAGE)
     }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -128,23 +136,24 @@ fun FormAnswerScreen(
         }
     }
 
-    val locationPermissions = remember {
-        arrayOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        )
-    }
+
+    val locationPermissions = arrayOf(
+        Manifest.permission.ACCESS_FINE_LOCATION,
+        Manifest.permission.ACCESS_COARSE_LOCATION
+    )
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionsGranted ->
         val fineLocationGranted = permissionsGranted[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
         val coarseLocationGranted = permissionsGranted[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
         if (fineLocationGranted || coarseLocationGranted) {
-            formAnswerViewModel.validateLocation() // Memanggil fungsi validasi baru di ViewModel
+            // Panggil fungsi validasi di ViewModel
+            formAnswerViewModel.validateLocation()
         } else {
             Toast.makeText(context, "Izin lokasi diperlukan.", Toast.LENGTH_LONG).show()
         }
     }
+
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, formId, userIdentifier) {
@@ -172,31 +181,7 @@ fun FormAnswerScreen(
         navController.popBackStack()
     }
 
-    LaunchedEffect(Unit) {
-        val fineLocationGranted = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        val coarseLocationGranted = ContextCompat.checkSelfPermission(
-            context, Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (fineLocationGranted || coarseLocationGranted) {
-            formAnswerViewModel.validateLocation()
-        }
-    }
-
-    LaunchedEffect(uiState) {
-        when (val state = uiState) {
-            is FormAnswerUiState.Success -> { /* Form is loaded successfully */ }
-            is FormAnswerUiState.Error -> {
-                Toast.makeText(context, state.message, Toast.LENGTH_LONG).show()
-                formAnswerViewModel.resetUiState()
-            }
-            FormAnswerUiState.Loading -> { /* Handled by CircularProgressIndicator below */ }
-            FormAnswerUiState.Idle -> { /* Nothing specific to do */ }
-        }
-    }
-
+    // ... (LaunchedEffect dan Scaffold)
     LaunchedEffect(submitResult) {
         when (submitResult) {
             is SubmitFormResult.Success -> {
@@ -220,11 +205,15 @@ fun FormAnswerScreen(
                 formAnswerViewModel.resetSubmitResult()
             }
             is SubmitFormResult.Error -> {
+                // Pesan error dari submit sudah ditangani oleh validasi tombol,
+                // tapi bisa ditambahkan Toast di sini jika diperlukan.
+                // Toast.makeText(context, (submitResult as SubmitFormResult.Error).message, Toast.LENGTH_LONG).show()
                 formAnswerViewModel.resetSubmitResult()
             }
             else -> { /* Loading atau Idle */ }
         }
     }
+
 
     Scaffold(
         topBar = {
@@ -255,9 +244,6 @@ fun FormAnswerScreen(
                         file
                     }
                 }
-
-                // PERUBAHAN: Logika validasi lokasi sekarang hanya bergantung pada status dari ViewModel
-                val isLocationValidCalculated = locationStatus == LocationVerificationStatus.VALID
 
                 LazyColumn(
                     modifier = Modifier
@@ -310,29 +296,35 @@ fun FormAnswerScreen(
                                 Text("Verifikasi Lokasi", style = MaterialTheme.typography.titleMedium)
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                // PERUBAHAN: Menampilkan status lokasi berdasarkan enum
-                                val (statusText, statusColor) = when (locationStatus) {
-                                    LocationVerificationStatus.VALID -> "✅ Lokasi Valid" to Color(0xFF2E7D32)
-                                    LocationVerificationStatus.INVALID -> "❌ Lokasi Tidak Valid" to Color.Red
-                                    LocationVerificationStatus.VERIFYING -> "Memverifikasi..." to Color.Gray
-                                    LocationVerificationStatus.FETCHING_API -> "Mengambil data lokasi..." to Color.Gray
-                                    LocationVerificationStatus.API_ERROR -> "❌ Gagal mengambil data lokasi" to Color.Red
-                                    LocationVerificationStatus.GPS_ERROR -> "❌ Gagal mendapatkan GPS" to Color.Red
-                                    else -> "Tekan tombol untuk validasi" to Color.Gray
+                                // Menampilkan status lokasi berdasarkan enum dari ViewModel
+                                val (icon, color) = when (locationStatusResult.status) {
+                                    LocationVerificationStatus.VALID -> Icons.Default.CheckCircle to Color(0xFF2E7D32)
+                                    LocationVerificationStatus.INVALID -> Icons.Default.Cancel to Color.Red
+                                    LocationVerificationStatus.VERIFYING -> Icons.Default.Sync to Color.Gray
+                                    LocationVerificationStatus.GPS_UNAVAILABLE -> Icons.Default.LocationOff to Color.Red
+                                    LocationVerificationStatus.API_ERROR -> Icons.Default.CloudOff to Color.Red
+                                    LocationVerificationStatus.NOT_VERIFIED -> Icons.Default.HelpOutline to Color.Gray
+                                    else -> Icons.Default.HelpOutline to Color.Gray
                                 }
 
-                                Text(
-                                    text = "Status Lokasi: $statusText",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = statusColor)
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(imageVector = icon, contentDescription = "Status Lokasi", tint = color)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = locationStatusResult.message,
+                                        style = MaterialTheme.typography.bodyMedium.copy(color = color, fontWeight = FontWeight.Bold)
+                                    )
+                                }
+
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                Button(onClick = {
-                                    locationPermissionLauncher.launch(locationPermissions)
-                                }, modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { locationPermissionLauncher.launch(locationPermissions) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Icon(Icons.Default.LocationOn, "Ambil Lokasi")
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Validasi Ulang Lokasi")
+                                    Text(if (locationStatusResult.status == LocationVerificationStatus.NOT_VERIFIED) "Verifikasi Lokasi Saya" else "Validasi Ulang Lokasi")
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -340,9 +332,10 @@ fun FormAnswerScreen(
                                 Text("Bukti Foto", style = MaterialTheme.typography.titleMedium)
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                Button(onClick = {
-                                    cameraPermissionLauncher.launch(cameraPermissions)
-                                }, modifier = Modifier.fillMaxWidth()) {
+                                Button(
+                                    onClick = { cameraPermissionLauncher.launch(cameraPermissions) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
                                     Icon(Icons.Default.Call, "Ambil Foto")
                                     Spacer(Modifier.width(8.dp))
                                     Text(if (photoUri == null && currentPhotoPathFromDraft == null) "Ambil Foto" else "Ambil Ulang Foto")
@@ -370,9 +363,7 @@ fun FormAnswerScreen(
                                     when (QuestionType.fromString(question.questionType)) {
                                         QuestionType.Text -> !answer.isNullOrBlank()
                                         QuestionType.MultipleChoice -> !answer.isNullOrBlank()
-                                        QuestionType.Checkbox -> {
-                                            !answer.isNullOrBlank() && answer != "[]" && answer != "[\"\"]"
-                                        }
+                                        QuestionType.Checkbox -> !answer.isNullOrBlank() && answer != "[]" && answer != "[\"\"]"
                                         QuestionType.LinearScale -> answer?.toIntOrNull() != null
                                         QuestionType.true_false -> !answer.isNullOrBlank()
                                         else -> false
@@ -385,28 +376,25 @@ fun FormAnswerScreen(
                             val isLocationRequired = form.locationRequired == true
                             val isPhotoRequired = form.photoRequired == true
 
-                            val cameraPermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-                            val locationPermissionGranted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+                            val isLocationDone = locationStatusResult.status == LocationVerificationStatus.VALID
+                            val isPhotoDone = photoUri != null || !currentPhotoPathFromDraft.isNullOrBlank()
 
-                            // PERUBAHAN: Logika validasi tombol submit
-                            if (isLocationRequired && !locationPermissionGranted) {
-                                Toast.makeText(context, "Akses lokasi diperlukan untuk mengirim jawaban.", Toast.LENGTH_LONG).show()
-                            } else if (isLocationRequired && !isLocationValidCalculated) {
-                                // Pesan disesuaikan dengan status
-                                val reason = when(locationStatus) {
-                                    LocationVerificationStatus.INVALID -> "Lokasi di luar area yang diizinkan."
-                                    LocationVerificationStatus.GPS_ERROR -> "Gagal mendapatkan lokasi GPS."
-                                    LocationVerificationStatus.API_ERROR -> "Gagal memvalidasi. Periksa koneksi."
-                                    else -> "Lokasi belum divalidasi."
-                                }
-                                Toast.makeText(context, reason, Toast.LENGTH_SHORT).show()
-                            } else if (isPhotoRequired && !cameraPermissionGranted) {
-                                Toast.makeText(context, "Akses kamera diperlukan untuk mengirim jawaban.", Toast.LENGTH_LONG).show()
-                            } else if (isPhotoRequired && photoUri == null && currentPhotoPathFromDraft == null) {
-                                Toast.makeText(context, "Foto wajib diambil.", Toast.LENGTH_SHORT).show()
-                            } else if (!allQuestionsAnswered) {
-                                Toast.makeText(context, "Harap lengkapi semua pertanyaan wajib (*).", Toast.LENGTH_SHORT).show()
+                            // Logika validasi yang diperbarui
+                            var validationMessage = ""
+                            if (!allQuestionsAnswered) {
+                                validationMessage = "Harap lengkapi semua pertanyaan wajib (*)."
+                            } else if (isLocationRequired && !isLocationDone && isPhotoRequired && !isPhotoDone) {
+                                validationMessage = "Anda belum melakukan verifikasi lokasi dan mengambil foto."
+                            } else if (isLocationRequired && !isLocationDone) {
+                                validationMessage = "Anda belum melakukan verifikasi lokasi."
+                            } else if (isPhotoRequired && !isPhotoDone) {
+                                validationMessage = "Anda belum mengambil foto."
+                            }
+
+                            if (validationMessage.isNotEmpty()) {
+                                Toast.makeText(context, validationMessage, Toast.LENGTH_LONG).show()
                             } else {
+                                // Jika semua validasi lolos, kirim jawaban
                                 formAnswerViewModel.submitAnswers(
                                     photoFile = photoFileToSubmit,
                                     currentLocation = currentLocation
@@ -450,8 +438,7 @@ fun FormAnswerScreen(
 }
 
 // =========================================================================
-// SISA KODE (PhotoDisplay dan QuestionInput) SAMA PERSIS SEPERTI MILIK ANDA
-// DAN TIDAK SAYA UBAH SAMA SEKALI
+// SISA KODE (PhotoDisplay dan QuestionInput) TIDAK PERLU DIUBAH
 // =========================================================================
 
 @Composable
