@@ -137,4 +137,7 @@ interface ApiService {
         @SerializedName("selected_options") val selectedOptions: String?,
         @SerializedName("linear_scale_value") val linearScaleValue: Int?
     )
+
+    @GET("locations")
+    suspend fun getLocations(): Response<List<LocationApiModel>>
 }
