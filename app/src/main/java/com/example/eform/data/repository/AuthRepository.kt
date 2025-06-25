@@ -140,10 +140,10 @@ class AuthRepository(
     ): Result<UserApiModel> {
         return withContext(Dispatchers.IO) {
             try {
-                // Cek apakah ada data yang akan dikirim, jika tidak ada, kembalikan pesan error.
-                if (name == null && address == null && profilePhoto == null && grade == null && subject == null) {
-                    return@withContext Result.failure(IOException("Tidak ada perubahan untuk disimpan."))
-                }
+//                // Cek apakah ada data yang akan dikirim, jika tidak ada, kembalikan pesan error.
+////                if (name == null && address == null && profilePhoto == null && grade == null && subject == null) {
+////                    return@withContext Result.failure(IOException("Tidak ada perubahan untuk disimpan."))
+//                }
 
                 // Panggil fungsi ApiService dengan meneruskan semua parameter secara langsung.
                 val response = apiService.updateUserProfile(

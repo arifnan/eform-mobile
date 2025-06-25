@@ -165,30 +165,34 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        _updateResult.value = UpdateProfileResult.Loading
+        // Cek apakah ada perubahan pada data teks atau gambar
+        val hasNameChanged = editableName.value != currentState.user.name
+        val hasAddressChanged = editableAddress.value != (currentState.user.address ?: "")
+        val hasGradeChanged = editableGrade.value != (currentState.user.grade ?: "")
+        val hasSubjectChanged = editableSubject.value != (currentState.user.subject ?: "")
+        val hasPhotoChanged = profileImageUri.value != null
 
+        // === LOGIKA BARU DIMULAI DI SINI ===
+        val isAnythingToUpdate = hasNameChanged || hasAddressChanged || hasGradeChanged || hasSubjectChanged || hasPhotoChanged
+
+        if (!isAnythingToUpdate) {
+            // Jika tidak ada yang berubah, langsung tampilkan pesan yang diinginkan dan selesai.
+            _updateResult.value = UpdateProfileResult.Success(currentState.user, "Tidak ada data yang diubah.")
+            return
+        }
+        // === LOGIKA BARU SELESAI ===
+
+        _updateResult.value = UpdateProfileResult.Loading
         viewModelScope.launch {
             try {
-                // Konversi String menjadi RequestBody jika nilainya berubah
-                val nameRequestBody = if (editableName.value != currentState.user.name) {
-                    editableName.value.toRequestBody("text/plain".toMediaTypeOrNull())
-                } else null
+                // Konversi String ke RequestBody HANYA jika nilainya berubah
+                val nameRequestBody = if (hasNameChanged) editableName.value.toRequestBody("text/plain".toMediaTypeOrNull()) else null
+                val addressRequestBody = if (hasAddressChanged) editableAddress.value.toRequestBody("text/plain".toMediaTypeOrNull()) else null
+                val gradeRequestBody = if (hasGradeChanged) editableGrade.value.toRequestBody("text/plain".toMediaTypeOrNull()) else null
+                val subjectRequestBody = if (hasSubjectChanged) editableSubject.value.toRequestBody("text/plain".toMediaTypeOrNull()) else null
 
-                val addressRequestBody = if (editableAddress.value != (currentState.user.address ?: "")) {
-                    editableAddress.value.toRequestBody("text/plain".toMediaTypeOrNull())
-                } else null
-
-                val gradeRequestBody = if (editableGrade.value != (currentState.user.grade ?: "")) {
-                    editableGrade.value.toRequestBody("text/plain".toMediaTypeOrNull())
-                } else null
-
-                val subjectRequestBody = if (editableSubject.value != (currentState.user.subject ?: "")) {
-                    editableSubject.value.toRequestBody("text/plain".toMediaTypeOrNull())
-                } else null
-
-
-                // Konversi Uri/File menjadi MultipartBody.Part jika ada gambar baru
-                var photoFileToUpload: File? = null // Untuk dihapus setelahnya
+                // Konversi File ke MultipartBody.Part HANYA jika ada gambar baru
+                var photoFileToUpload: File? = null
                 val photoPart: MultipartBody.Part? = profileImageUri.value?.let { uri ->
                     photoFileToUpload = getFileFromUri(contextForFile, uri, "profile_photo")
                     photoFileToUpload?.let { file ->
@@ -197,9 +201,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
-                Log.d("PROFILE_VM_API", "Updating profile via API. Name: ${nameRequestBody}, Address: ${addressRequestBody}, Grade: ${gradeRequestBody}, Subject: ${subjectRequestBody}, Photo: ${photoPart != null}")
-
-                // Panggil repository dengan tipe data dan nama parameter yang benar
+                // Panggil repository (sekarang kita yakin ada sesuatu untuk di-update)
                 val result = authRepository.updateUserProfile(
                     name = nameRequestBody,
                     address = addressRequestBody,
@@ -210,8 +212,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
                 result.fold(
                     onSuccess = { updatedUserApiModel ->
-                        Log.d("PROFILE_VM_API", "API update profile success: $updatedUserApiModel")
-                        // Update state lokal setelah berhasil
+                        // Logika sukses yang sudah ada (benar)
                         _uiState.value = ProfileUiState.Success(updatedUserApiModel)
                         editableName.value = updatedUserApiModel.name ?: ""
                         editableAddress.value = updatedUserApiModel.address ?: ""
@@ -219,20 +220,17 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                         editableSubject.value = updatedUserApiModel.subject ?: ""
                         currentProfilePhotoUrl.value = updatedUserApiModel.profilePhotoUrl
                         profileImageUri.value = null
-                        photoFileToUpload?.delete() // Hapus file sementara
-
+                        photoFileToUpload?.delete()
                         saveOrUpdateUserInLocalDb(updatedUserApiModel, "saveProfileChanges_ApiSuccess")
-
                         _updateResult.value = UpdateProfileResult.Success(updatedUserApiModel, "Profil berhasil diperbarui.")
                     },
                     onFailure = { exception ->
-                        Log.e("PROFILE_VM_API", "API update profile failed: ${exception.message}", exception)
-                        photoFileToUpload?.delete() // Hapus file sementara jika gagal
+                        // Logika gagal yang sudah ada (benar)
+                        photoFileToUpload?.delete()
                         _updateResult.value = UpdateProfileResult.Error(exception.message ?: "Gagal memperbarui profil.")
                     }
                 )
             } catch (e: Exception) {
-                Log.e("PROFILE_VM_API", "An exception occurred during profile save: ${e.message}", e)
                 _updateResult.value = UpdateProfileResult.Error(e.message ?: "Terjadi kesalahan.")
             }
         }
