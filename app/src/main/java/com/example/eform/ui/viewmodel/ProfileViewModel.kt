@@ -1,6 +1,5 @@
 package com.example.eform.ui.viewmodel
 
-import com.example.eform.data.model.api.UserApiModel
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -14,6 +13,7 @@ import com.example.eform.data.database.AppDatabase
 import com.example.eform.data.database.UserDao
 import com.example.eform.data.local.UserPreferences
 import com.example.eform.data.model.UserEntity
+import com.example.eform.data.model.api.UserApiModel
 import com.example.eform.data.repository.AuthRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,10 +21,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.asRequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
-import java.io.IOException
 
+// Sealed class untuk state UI (sudah benar)
 sealed class ProfileUiState {
     object Idle : ProfileUiState()
     object Loading : ProfileUiState()
@@ -32,6 +37,7 @@ sealed class ProfileUiState {
     data class Error(val message: String) : ProfileUiState()
 }
 
+// Sealed class untuk hasil update (sudah benar)
 sealed class UpdateProfileResult {
     object Idle : UpdateProfileResult()
     object Loading : UpdateProfileResult()
@@ -51,15 +57,20 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     private val _updateResult = MutableStateFlow<UpdateProfileResult>(UpdateProfileResult.Idle)
     val updateResult: StateFlow<UpdateProfileResult> = _updateResult.asStateFlow()
 
+    // StateFlow untuk field yang bisa diedit (sudah benar)
     val editableName = MutableStateFlow("")
     val editableAddress = MutableStateFlow("")
+    val editableGrade = MutableStateFlow("") // Tambahkan untuk Grade jika bisa diedit
+    val editableSubject = MutableStateFlow("") // Tambahkan untuk Subject jika bisa diedit
     val profileImageUri = MutableStateFlow<Uri?>(null)
     val currentProfilePhotoUrl = MutableStateFlow<String?>(null)
+
 
     init {
         loadUserProfile()
     }
 
+    // Fungsi loadUserProfile (sudah benar)
     fun loadUserProfile() {
         viewModelScope.launch {
             _uiState.value = ProfileUiState.Loading
@@ -68,8 +79,10 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                 onSuccess = { userApiModel ->
                     Log.d("PROFILE_VM_LOAD", "User API Model received: $userApiModel")
                     _uiState.value = ProfileUiState.Success(userApiModel)
-                    editableName.value = userApiModel.name ?: "" // Default ke string kosong
+                    editableName.value = userApiModel.name ?: ""
                     editableAddress.value = userApiModel.address ?: ""
+                    editableGrade.value = userApiModel.grade ?: "" // Isi dari API
+                    editableSubject.value = userApiModel.subject ?: "" // Isi dari API
                     currentProfilePhotoUrl.value = userApiModel.profilePhotoUrl
                     profileImageUri.value = null
                     saveOrUpdateUserInLocalDb(userApiModel, "loadUserProfile")
@@ -82,27 +95,24 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Fungsi saveOrUpdateUserInLocalDb (sudah benar)
     private fun saveOrUpdateUserInLocalDb(userApiModel: UserApiModel, sourceTag: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val existingUser = userDao.getUserById(userApiModel.id)
                 val passwordForDb = existingUser?.password ?: ""
-
-                // Pastikan semua field non-nullable di UserEntity mendapatkan nilai yang valid
                 val entityName = userApiModel.name ?: "N/A"
-                val entityEmail = userApiModel.email ?: "N/A" // Seharusnya email tidak pernah null dari API jika login berhasil
-                val entityRole = userApiModel.role ?: "unknown" // Seharusnya role tidak pernah null
-
+                val entityEmail = userApiModel.email ?: "N/A"
+                val entityRole = userApiModel.role ?: "unknown"
                 val userEntity = UserEntity(
                     id = userApiModel.id,
                     name = entityName,
                     email = entityEmail,
                     nip = userApiModel.nip ?: "",
-                    password = passwordForDb, // Jaga password lama atau kosongkan jika baru
+                    password = passwordForDb,
                     role = entityRole,
-                    address = userApiModel.address // address di UserEntity sudah nullable
+                    address = userApiModel.address
                 )
-
                 if (existingUser != null) {
                     userDao.updateUser(userEntity)
                     Log.d("PROFILE_VM_DB", "User profile updated in local DB via $sourceTag: $userEntity")
@@ -116,18 +126,15 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun onNameChanged(newName: String) {
-        editableName.value = newName
-    }
 
-    fun onAddressChanged(newAddress: String) {
-        editableAddress.value = newAddress
-    }
+    // Fungsi-fungsi on...Changed (sudah benar)
+    fun onNameChanged(newName: String) { editableName.value = newName }
+    fun onAddressChanged(newAddress: String) { editableAddress.value = newAddress }
+    fun onGradeChanged(newGrade: String) { editableGrade.value = newGrade } // Tambahkan untuk grade
+    fun onSubjectChanged(newSubject: String) { editableSubject.value = newSubject } // Tambahkan untuk subject
+    fun onProfileImageUriChanged(uri: Uri?) { profileImageUri.value = uri }
 
-    fun onProfileImageUriChanged(uri: Uri?) {
-        profileImageUri.value = uri
-    }
-
+    // Fungsi getFileFromUri (sudah benar)
     private fun getFileFromUri(context: Context, uri: Uri, fileNamePrefix: String): File? {
         return try {
             val tempFile = File(context.cacheDir, "${fileNamePrefix}_${System.currentTimeMillis()}.jpg")
@@ -143,6 +150,9 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // ==========================================================
+    // == FUNGSI YANG DIPERBAIKI ADA DI SINI ==
+    // ==========================================================
     fun saveProfileChanges(contextForFile: Context) {
         val currentState = _uiState.value
         if (currentState !is ProfileUiState.Success) {
@@ -150,58 +160,81 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
-        val newName = editableName.value
-        val newAddress = editableAddress.value
-        val newImageUri = profileImageUri.value
-        var photoFileToUpload: File? = null
-
-        if (newName.isBlank()) {
+        if (editableName.value.isBlank()) {
             _updateResult.value = UpdateProfileResult.Error("Nama tidak boleh kosong.")
             return
         }
 
-        newImageUri?.let { uri ->
-            photoFileToUpload = getFileFromUri(contextForFile, uri, "profile_photo")
-            if (photoFileToUpload == null && newImageUri != null) {
-                _updateResult.value = UpdateProfileResult.Error("Gagal memproses file gambar profil.")
-                return
-            }
-        }
-
         _updateResult.value = UpdateProfileResult.Loading
+
         viewModelScope.launch {
-            // Kirim null jika tidak ada perubahan, atau string kosong jika field direset menjadi kosong
-            val nameToSend = if (newName != currentState.user.name) newName else null
-            val addressToSend = if (newAddress != (currentState.user.address ?: "")) newAddress.ifBlank { null } else null
+            try {
+                // Konversi String menjadi RequestBody jika nilainya berubah
+                val nameRequestBody = if (editableName.value != currentState.user.name) {
+                    editableName.value.toRequestBody("text/plain".toMediaTypeOrNull())
+                } else null
 
-            Log.d("PROFILE_VM_API", "Updating profile via API. Name: $nameToSend, Address: $addressToSend, Photo: ${photoFileToUpload?.name}")
+                val addressRequestBody = if (editableAddress.value != (currentState.user.address ?: "")) {
+                    editableAddress.value.toRequestBody("text/plain".toMediaTypeOrNull())
+                } else null
 
-            val result = authRepository.updateUserProfile(
-                name = nameToSend,
-                address = addressToSend,
-                profilePhotoFile = photoFileToUpload
-            )
+                val gradeRequestBody = if (editableGrade.value != (currentState.user.grade ?: "")) {
+                    editableGrade.value.toRequestBody("text/plain".toMediaTypeOrNull())
+                } else null
 
-            result.fold(
-                onSuccess = { updatedUserApiModel ->
-                    Log.d("PROFILE_VM_API", "API update profile success: $updatedUserApiModel")
-                    _uiState.value = ProfileUiState.Success(updatedUserApiModel)
-                    editableName.value = updatedUserApiModel.name ?: ""
-                    editableAddress.value = updatedUserApiModel.address ?: ""
-                    currentProfilePhotoUrl.value = updatedUserApiModel.profilePhotoUrl
-                    profileImageUri.value = null
-                    photoFileToUpload?.delete()
+                val subjectRequestBody = if (editableSubject.value != (currentState.user.subject ?: "")) {
+                    editableSubject.value.toRequestBody("text/plain".toMediaTypeOrNull())
+                } else null
 
-                    saveOrUpdateUserInLocalDb(updatedUserApiModel, "saveProfileChanges_ApiSuccess")
 
-                    _updateResult.value = UpdateProfileResult.Success(updatedUserApiModel, "Profil berhasil diperbarui.")
-                },
-                onFailure = { exception ->
-                    Log.e("PROFILE_VM_API", "API update profile failed: ${exception.message}", exception)
-                    photoFileToUpload?.delete()
-                    _updateResult.value = UpdateProfileResult.Error(exception.message ?: "Gagal memperbarui profil.")
+                // Konversi Uri/File menjadi MultipartBody.Part jika ada gambar baru
+                var photoFileToUpload: File? = null // Untuk dihapus setelahnya
+                val photoPart: MultipartBody.Part? = profileImageUri.value?.let { uri ->
+                    photoFileToUpload = getFileFromUri(contextForFile, uri, "profile_photo")
+                    photoFileToUpload?.let { file ->
+                        val requestFile = file.asRequestBody("image/*".toMediaTypeOrNull())
+                        MultipartBody.Part.createFormData("profilePhoto", file.name, requestFile)
+                    }
                 }
-            )
+
+                Log.d("PROFILE_VM_API", "Updating profile via API. Name: ${nameRequestBody}, Address: ${addressRequestBody}, Grade: ${gradeRequestBody}, Subject: ${subjectRequestBody}, Photo: ${photoPart != null}")
+
+                // Panggil repository dengan tipe data dan nama parameter yang benar
+                val result = authRepository.updateUserProfile(
+                    name = nameRequestBody,
+                    address = addressRequestBody,
+                    profilePhoto = photoPart,
+                    grade = gradeRequestBody,
+                    subject = subjectRequestBody
+                )
+
+                result.fold(
+                    onSuccess = { updatedUserApiModel ->
+                        Log.d("PROFILE_VM_API", "API update profile success: $updatedUserApiModel")
+                        // Update state lokal setelah berhasil
+                        _uiState.value = ProfileUiState.Success(updatedUserApiModel)
+                        editableName.value = updatedUserApiModel.name ?: ""
+                        editableAddress.value = updatedUserApiModel.address ?: ""
+                        editableGrade.value = updatedUserApiModel.grade ?: ""
+                        editableSubject.value = updatedUserApiModel.subject ?: ""
+                        currentProfilePhotoUrl.value = updatedUserApiModel.profilePhotoUrl
+                        profileImageUri.value = null
+                        photoFileToUpload?.delete() // Hapus file sementara
+
+                        saveOrUpdateUserInLocalDb(updatedUserApiModel, "saveProfileChanges_ApiSuccess")
+
+                        _updateResult.value = UpdateProfileResult.Success(updatedUserApiModel, "Profil berhasil diperbarui.")
+                    },
+                    onFailure = { exception ->
+                        Log.e("PROFILE_VM_API", "API update profile failed: ${exception.message}", exception)
+                        photoFileToUpload?.delete() // Hapus file sementara jika gagal
+                        _updateResult.value = UpdateProfileResult.Error(exception.message ?: "Gagal memperbarui profil.")
+                    }
+                )
+            } catch (e: Exception) {
+                Log.e("PROFILE_VM_API", "An exception occurred during profile save: ${e.message}", e)
+                _updateResult.value = UpdateProfileResult.Error(e.message ?: "Terjadi kesalahan.")
+            }
         }
     }
 
@@ -209,6 +242,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
         _updateResult.value = UpdateProfileResult.Idle
     }
 
+    // Factory (sudah benar)
     class ProfileViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(ProfileViewModel::class.java)) {

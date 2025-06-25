@@ -140,38 +140,19 @@ class AuthRepository(
     ): Result<UserApiModel> {
         return withContext(Dispatchers.IO) {
             try {
-                val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
-                var hasContent = false // Flag untuk melacak apakah ada data
-
-                name?.let {
-                    builder.addPart(it)
-                    hasContent = true
-                }
-                address?.let {
-                    builder.addPart(it)
-                    hasContent = true
-                }
-                profilePhoto?.let {
-                    builder.addPart(it)
-                    hasContent = true
-                }
-                grade?.let {
-                    builder.addPart(it)
-                    hasContent = true
-                }
-                subject?.let {
-                    builder.addPart(it)
-                    hasContent = true
-                }
-
-                // HANYA kirim request jika ada konten
-                if (!hasContent) {
-                    // Jika tidak ada yang diubah, kembalikan error tanpa membuat crash
+                // Cek apakah ada data yang akan dikirim, jika tidak ada, kembalikan pesan error.
+                if (name == null && address == null && profilePhoto == null && grade == null && subject == null) {
                     return@withContext Result.failure(IOException("Tidak ada perubahan untuk disimpan."))
                 }
 
-                val requestBody = builder.build()
-                val response = apiService.updateUserProfile(requestBody) // Sesuaikan dengan nama fungsi di ApiService
+                // Panggil fungsi ApiService dengan meneruskan semua parameter secara langsung.
+                val response = apiService.updateUserProfile(
+                    name = name,
+                    address = address,
+                    profilePhoto = profilePhoto,
+                    grade = grade,
+                    subject = subject
+                )
 
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
