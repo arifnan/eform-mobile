@@ -95,7 +95,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 
     implementation(libs.androidx.foundation) // Biasanya bagian dari compose.bom atau ui
-    implementation("androidx.compose.material:material-icons-extended:1.6.8")
+    implementation(libs.androidx.material.icons.extended.v168)
     // Retrofit & Networking
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
@@ -114,7 +114,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     // Coil (Image Loading)
-    implementation(libs.coil.compose)
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     // Animated Navigation Bar (jika ini library pihak ketiga)
     implementation(libs.animated.navigation.bar)

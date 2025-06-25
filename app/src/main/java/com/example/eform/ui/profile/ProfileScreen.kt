@@ -1,7 +1,6 @@
 package com.example.eform.ui.profile
 
 import android.app.Application
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
@@ -64,6 +62,7 @@ fun ProfileScreen(
     val updateResult by profileViewModel.updateResult.collectAsState()
 
     var editMode by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
 
     val editableName by profileViewModel.editableName.collectAsState()
     val editableAddress by profileViewModel.editableAddress.collectAsState()
@@ -89,6 +88,29 @@ fun ProfileScreen(
         }
     }
 
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Konfirmasi Logout") },
+            text = { Text("Apakah Anda yakin ingin keluar?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLogoutDialog = false
+                    authViewModel.logout()
+                    navController.navigate(Screen.Onboarding.route) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }) { Text("Iya") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutDialog = false }) {
+                    Text("Tidak")
+                }
+            }
+        )
+    }
+
     fun resetEditableFieldsToCurrentProfileData(user: UserApiModel?) {
         user?.let {
             profileViewModel.onNameChanged(it.name ?: "")
@@ -97,13 +119,18 @@ fun ProfileScreen(
         }
     }
 
+    // Fungsi untuk membatalkan
+    val cancelAction = {
+        editMode = false
+        if (uiState is ProfileUiState.Success) {
+            resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
+        }
+        Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
+    }
+
     if (editMode) {
         BackHandler(enabled = true) {
-            editMode = false
-            if (uiState is ProfileUiState.Success) {
-                resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
-            }
-            Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
+            cancelAction()
         }
     }
 
@@ -114,11 +141,7 @@ fun ProfileScreen(
                 navController = navController,
                 onBackClicked = {
                     if (editMode) {
-                        editMode = false
-                        if (uiState is ProfileUiState.Success) {
-                            resetEditableFieldsToCurrentProfileData((uiState as ProfileUiState.Success).user)
-                        }
-                        Toast.makeText(context, "Edit dibatalkan", Toast.LENGTH_SHORT).show()
+                        cancelAction()
                     } else {
                         navController.popBackStack()
                     }
@@ -154,20 +177,14 @@ fun ProfileScreen(
                     ) {
                         val imageToDisplay = imageUri ?: currentProfilePhotoUrl
 
-                        // ==========================================================
-                        // === PERBAIKAN UTAMA ADA DI SINI ===
-                        // ==========================================================
                         val painter = rememberAsyncImagePainter(
                             model = ImageRequest.Builder(LocalContext.current)
                                 .data(imageToDisplay ?: R.drawable.ic_default_profile)
                                 .crossfade(true)
-                                // Paksa Coil untuk selalu mengambil dari jaringan,
-                                // mengabaikan cache memori dan disk.
                                 .memoryCachePolicy(CachePolicy.DISABLED)
                                 .diskCachePolicy(CachePolicy.DISABLED)
                                 .build()
                         )
-                        // ==========================================================
 
                         Image(
                             painter = painter,
@@ -233,11 +250,7 @@ fun ProfileScreen(
                     }
                     Button(
                         onClick = {
-                            authViewModel.logout()
-                            navController.navigate(Screen.Onboarding.route) { // Changed from Screen.Role.route
-                                popUpTo(navController.graph.startDestinationId) { inclusive = true }
-                                launchSingleTop = true
-                            }
+                            showLogoutDialog = true
                         },
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -260,7 +273,7 @@ fun ProfileScreen(
     }
 }
 
-// ... (Composable ProfileDataField tetap sama)
+
 @Composable
 fun ProfileDataField(
     label: String,

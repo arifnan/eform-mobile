@@ -114,9 +114,9 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
-        viewModelScope.launch {
+        // Jalankan seluruh proses logout di background thread (I/O)
+        viewModelScope.launch(Dispatchers.IO) {
             authRepository.logout()
-            _logoutResult.value = Result.success(Unit)
         }
     }
 

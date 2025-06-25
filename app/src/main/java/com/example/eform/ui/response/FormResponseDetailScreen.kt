@@ -5,33 +5,40 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
-import androidx.compose.foundation.Image
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
-import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.example.eform.data.model.api.AnswerApiModel
 import com.example.eform.ui.components.StandardTopAppBar
-import com.example.eform.ui.form.formatApiDateTime // Pastikan fungsi ini bisa diakses
+import com.example.eform.ui.form.formatApiDateTime
 import com.example.eform.ui.viewmodel.FormResponseDetailViewModel
 import com.example.eform.ui.viewmodel.ResponseDetailUiState
 
@@ -58,17 +65,18 @@ fun FormResponseDetailScreen(
                 else -> "Detail Jawaban"
             }
             StandardTopAppBar(title = title, navController = navController)
-        }
+        },
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
     ) { innerPadding ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
         ) {
             when (val state = uiState) {
                 is ResponseDetailUiState.Loading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    // --- Tampilan Shimmer Loading ---
+                    LoadingShimmerEffect()
                 }
                 is ResponseDetailUiState.Error -> {
                     Text(
@@ -83,94 +91,95 @@ fun FormResponseDetailScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(rememberScrollState())
-                            .padding(16.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
-                        // Informasi Pengisi
-                        Text("Diisi oleh: ${response.student?.name ?: "Siswa tidak dikenal"}", style = MaterialTheme.typography.titleLarge)
-                        Text("Waktu: ${formatApiDateTime(response.submittedAt)}", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-
-                        Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-                        Text("Foto Bukti Pengisian:", style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        if (!response.photoUrl.isNullOrEmpty()) {
-                            // Menggunakan AsyncImage untuk kontrol lebih baik (placeholder, error)
-                            AsyncImage(
-                                model = ImageRequest.Builder(LocalContext.current)
-                                    .data(response.photoUrl)
-                                    .crossfade(true)
-                                    .build(),
-                                contentDescription = "Foto Bukti Pengisian",
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(300.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.LightGray),
-                                contentScale = ContentScale.Crop
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconInfoRow(
+                                icon = Icons.Default.Person,
+                                text = response.student?.name ?: "Siswa tidak dikenal"
                             )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(200.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Foto tidak tersedia.")
+                            IconInfoRow(
+                                icon = Icons.Default.CalendarMonth,
+                                text = formatApiDateTime(response.submittedAt)
+                            )
+                        }
+
+                        DetailSection(title = "Detail Jawaban") {
+                            // --- Menambahkan penomoran ---
+                            response.answers?.forEachIndexed { index, answer ->
+                                AnswerDetailCard(
+                                    answer = answer,
+                                    questionNumber = index + 1 // Nomor dimulai dari 1
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
-
-                        // Peta Lokasi
-                        Text("Lokasi Pengisian:", style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        val latitude = response.latitude
-                        val longitude = response.longitude
-                        if (latitude != null && longitude != null) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(250.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable {
-                                        val gmmIntentUri = Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude(Lokasi Pengisian Formulir)")
-                                        val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
-                                        mapIntent.setPackage("com.google.android.apps.maps")
-                                        try {
-                                            context.startActivity(mapIntent)
-                                        } catch (e: ActivityNotFoundException) {
-                                            try {
-                                                val genericMapIntent = Intent(Intent.ACTION_VIEW, Uri.parse("geo:$latitude,$longitude"))
-                                                context.startActivity(genericMapIntent)
-                                            } catch (e2: ActivityNotFoundException) {
-                                                Toast.makeText(context, "Tidak ada aplikasi peta yang ditemukan.", Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Icon(imageVector = Icons.Filled.LocationOn, contentDescription = "Ikon Lokasi", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
-                                    Text("Lat: $latitude", style = MaterialTheme.typography.bodyMedium)
-                                    Text("Lng: $longitude", style = MaterialTheme.typography.bodyMedium)
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Text("(Tekan untuk lihat di Peta)", style = MaterialTheme.typography.labelSmall)
+                        DetailSection(title = "Foto Bukti Pengisian") {
+                            if (!response.photoUrl.isNullOrEmpty()) {
+                                AsyncImage(
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(response.photoUrl)
+                                        .crossfade(true).build(),
+                                    contentDescription = "Foto Bukti Pengisian",
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(300.dp)
+                                        .clip(RoundedCornerShape(12.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.surfaceVariant,
+                                            RoundedCornerShape(12.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("Foto tidak tersedia.")
                                 }
                             }
-                            Text("Status Validasi Lokasi: ${if(response.isLocationValid) "Valid" else "Tidak Valid"}", style = MaterialTheme.typography.bodySmall, color = if(response.isLocationValid) Color(0xFF2E7D32) else MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 4.dp))
-                        } else {
-                            Text("Data lokasi tidak tersedia untuk respons ini.")
                         }
 
-                        // Detail Jawaban
-                        Text("Detail Jawaban:", style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        response.answers?.forEach { answer ->
-                            AnswerDetailCard(answer) // <-- Memanggil Composable yang sudah dimodifikasi
-                            Spacer(modifier = Modifier.height(8.dp))
+                        DetailSection(title = "Lokasi Pengisian") {
+                            val latitude = response.latitude
+                            val longitude = response.longitude
+                            if (latitude != null && longitude != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(200.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                        .clickable {
+                                            val gmmIntentUri = Uri.parse("geo:$latitude,$longitude?q=$latitude,$longitude(Lokasi Pengisian Formulir)")
+                                            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+                                            mapIntent.setPackage("com.google.android.apps.maps")
+                                            try {
+                                                context.startActivity(mapIntent)
+                                            } catch (e: ActivityNotFoundException) {
+                                                Toast.makeText(context, "Aplikasi peta tidak ditemukan.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(imageVector = Icons.Filled.LocationOn, contentDescription = "Ikon Lokasi", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
+                                        Text("Lat: $latitude, Lng: $longitude", style = MaterialTheme.typography.bodyMedium)
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text("(Tekan untuk lihat di Peta)", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(12.dp))
+                                ValidationStatusChip(isValid = response.isLocationValid)
+
+                            } else {
+                                Text("Data lokasi tidak tersedia.")
+                            }
                         }
                     }
                 }
@@ -179,47 +188,168 @@ fun FormResponseDetailScreen(
     }
 }
 
-// --- FUNGSI AnswerDetailCard YANG DIPERBAIKI ---
+// --- Composable Baru dan yang Diperbarui ---
+
 @Composable
-fun AnswerDetailCard(answer: AnswerApiModel) {
+fun DetailSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
+        Column(content = content)
+    }
+}
+
+@Composable
+fun IconInfoRow(icon: ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(text = text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+fun ValidationStatusChip(isValid: Boolean) {
+    val backgroundColor = if (isValid) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.errorContainer
+    val contentColor = if (isValid) Color(0xFF1B5E20) else MaterialTheme.colorScheme.onErrorContainer
+    val text = if (isValid) "Lokasi Valid" else "Lokasi Tidak Valid"
+
+    Box(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(backgroundColor)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = text,
+            color = contentColor,
+            fontWeight = FontWeight.Medium,
+            style = MaterialTheme.typography.labelLarge
+        )
+    }
+}
+@Composable
+fun AnswerDetailCard(answer: AnswerApiModel, questionNumber: Int) {
     val answerText = answer.answerText ?: "Tidak dijawab"
-    // Cek apakah jawaban adalah URI gambar yang valid dari server
     val isImageUrl = answerText.startsWith("http://") || answerText.startsWith("https://")
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        // --- PERUBAHAN 1: Mengubah warna latar belakang kartu ---
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = answer.question?.questionText ?: "Pertanyaan tidak ditemukan",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.Top) {
+                // --- PERUBAHAN 2: Mengubah warna teks agar kontras ---
+                Text(
+                    text = "$questionNumber.",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimary // Warna teks untuk latar primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = answer.question?.questionText ?: "Pertanyaan tidak ditemukan",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onPrimary // Warna teks untuk latar primary
+                )
+            }
 
-            // Tampilkan gambar jika jawaban adalah URL gambar, jika tidak, tampilkan sebagai teks
+            // --- PERUBAHAN 3: Mengubah warna divider agar terlihat ---
+            Divider(
+                modifier = Modifier.padding(vertical = 12.dp),
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
+            )
+
             if (isImageUrl) {
+                // Untuk gambar, tidak perlu perubahan karena akan menutupi latar belakang
                 AsyncImage(
                     model = ImageRequest.Builder(LocalContext.current)
                         .data(answerText)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Jawaban gambar untuk: ${answer.question?.questionText}",
+                        .crossfade(true).build(),
+                    contentDescription = "Jawaban gambar",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(250.dp) // Sesuaikan tinggi sesuai kebutuhan
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.LightGray),
+                        .height(250.dp)
+                        .clip(RoundedCornerShape(8.dp)),
                     contentScale = ContentScale.Crop
                 )
             } else {
+                // --- PERUBAHAN 4: Mengubah warna teks jawaban ---
                 Text(
                     text = answerText.replace(";;", ", "),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onPrimary, // Warna teks untuk latar primary
+                    lineHeight = 22.sp
                 )
             }
         }
     }
+}
+// --- Composable untuk Shimmer Effect ---
+@Composable
+fun LoadingShimmerEffect() {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        // Shimmer for user info
+        Row {
+            Spacer(modifier = Modifier.size(24.dp).clip(CircleShape).shimmerEffect())
+            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.height(24.dp).width(200.dp).shimmerEffect())
+        }
+        Row {
+            Spacer(modifier = Modifier.size(24.dp).clip(CircleShape).shimmerEffect())
+            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.height(24.dp).width(250.dp).shimmerEffect())
+        }
+
+        // Shimmer for answers section
+        Spacer(modifier = Modifier.height(24.dp).width(150.dp).shimmerEffect())
+        repeat(3) {
+            Spacer(modifier = Modifier.fillMaxWidth().height(120.dp).shimmerEffect())
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Shimmer for photo section
+        Spacer(modifier = Modifier.height(24.dp).width(180.dp).shimmerEffect())
+        Spacer(modifier = Modifier.fillMaxWidth().height(250.dp).shimmerEffect())
+    }
+}
+
+fun Modifier.shimmerEffect(): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "Shimmer")
+    val translateAnim = transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ), label = "Shimmer Float"
+    )
+    val brush = Brush.linearGradient(
+        colors = listOf(
+            Color.LightGray.copy(alpha = 0.9f),
+            Color.LightGray.copy(alpha = 0.4f),
+            Color.LightGray.copy(alpha = 0.9f)
+        ),
+        start = Offset.Zero,
+        end = Offset(x = translateAnim.value, y = translateAnim.value)
+    )
+    background(brush)
 }

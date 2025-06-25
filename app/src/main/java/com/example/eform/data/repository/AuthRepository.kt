@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.HttpException
@@ -129,34 +130,48 @@ class AuthRepository(
         return userPreferences.getToken.firstOrNull()
     }
 
+    // Di dalam kelas AuthRepository
     suspend fun updateUserProfile(
-        name: String?,
-        address: String?,
-        profilePhotoFile: File?,
-        grade: String? = null,
-        subject: String? = null
+        name: RequestBody?,
+        address: RequestBody?,
+        profilePhoto: MultipartBody.Part?,
+        grade: RequestBody?,
+        subject: RequestBody?
     ): Result<UserApiModel> {
         return withContext(Dispatchers.IO) {
             try {
-                val nameRb = name?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val addressRb = address?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val gradeRb = grade?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
-                val subjectRb = subject?.takeIf { it.isNotBlank() }?.toRequestBody("text/plain".toMediaTypeOrNull())
+                val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
+                var hasContent = false // Flag untuk melacak apakah ada data
 
-
-                var photoPart: MultipartBody.Part? = null
-                profilePhotoFile?.let {
-                    val photoFileRb = it.asRequestBody("image/*".toMediaTypeOrNull())
-                    photoPart = MultipartBody.Part.createFormData("profile_photo", it.name, photoFileRb)
+                name?.let {
+                    builder.addPart(it)
+                    hasContent = true
+                }
+                address?.let {
+                    builder.addPart(it)
+                    hasContent = true
+                }
+                profilePhoto?.let {
+                    builder.addPart(it)
+                    hasContent = true
+                }
+                grade?.let {
+                    builder.addPart(it)
+                    hasContent = true
+                }
+                subject?.let {
+                    builder.addPart(it)
+                    hasContent = true
                 }
 
-                val response = apiService.updateUserProfile(
-                    name = nameRb,
-                    address = addressRb,
-                    profilePhoto = photoPart,
-                    grade = gradeRb,
-                    subject = subjectRb
-                )
+                // HANYA kirim request jika ada konten
+                if (!hasContent) {
+                    // Jika tidak ada yang diubah, kembalikan error tanpa membuat crash
+                    return@withContext Result.failure(IOException("Tidak ada perubahan untuk disimpan."))
+                }
+
+                val requestBody = builder.build()
+                val response = apiService.updateUserProfile(requestBody) // Sesuaikan dengan nama fungsi di ApiService
 
                 if (response.isSuccessful && response.body() != null) {
                     Result.success(response.body()!!)
@@ -165,9 +180,13 @@ class AuthRepository(
                     val readableErrorMsg = parseErrorResponse(errorMsgJson)
                     Result.failure(IOException(readableErrorMsg))
                 }
-            } catch (e: HttpException) { Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e)) }
-            catch (e: IOException) { Result.failure(IOException("Cannot connect to server. Check your internet connection.", e)) }
-            catch (e: Exception) { Result.failure(IOException("An error occurred: ${e.message}", e)) }
+            } catch (e: HttpException) {
+                Result.failure(IOException("Network error (HTTP ${e.code()}): ${e.message()}", e))
+            } catch (e: IOException) {
+                Result.failure(IOException("Cannot connect to server. Check your internet connection.", e))
+            } catch (e: Exception) {
+                Result.failure(IOException("An error occurred: ${e.message}", e))
+            }
         }
     }
 }
